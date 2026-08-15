@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fence Planner — Map Editor</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div id="toolbar">
+    <button data-tool="select" class="tool-btn active" title="V">Select</button>
+    <button data-tool="draw" class="tool-btn" title="D">Draw a fence line</button>
+    <button id="btn-new-run" title="N">New run</button>
+    <button id="btn-undo" title="Ctrl+Z">Undo</button>
+    <button id="btn-redo" title="Ctrl+Shift+Z">Redo</button>
+    <span id="status-text"></span>
+  </div>
+
+  <div id="map-wrap">
+    <div id="map"></div>
+    <!-- SVG overlay, synced 1:1 with the map viewport in overlay.js -->
+    <svg id="editor-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <!-- Finish run: fixed corner, per DRW-005 / UI-002, never follows the cursor -->
+    <button id="btn-finish-run" class="floating-corner-btn" hidden>Finish run (Enter)</button>
+    <!-- length input popover for exact segment length editing (7.3) -->
+    <div id="length-popover" class="popover" hidden>
+      <input id="length-input" type="number" step="0.1" min="0.1" />
+      <span>m</span>
+      <button id="length-apply">✓</button>
+      <button id="length-close">✕</button>
+    </div>
+  </div>
+
+  <script src="src/model.js"></script>
+  <script src="src/geo.js"></script>
+  <script src="src/history.js"></script>
+  <script src="src/state.js"></script>
+  <script src="src/draw.js"></script>
+  <script src="src/overlay.js"></script>
+  <script src="src/keyboard.js"></script>
+  <script src="src/main.js"></script>
+
+  <!-- Replace YOUR_API_KEY. callback=initMap defined in src/main.js -->
+  <script async defer
+    src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap">
+  </script>
+</body>
+</html>

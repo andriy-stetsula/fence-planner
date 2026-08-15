@@ -1,36 +1,39 @@
 /**
- * overlay.js
- * Google Maps OverlayView, що тримає SVG-шар синхронізованим з картою,
- * і відповідає за фактичний рендер (розділ 19: порядок шарів).
+ * overlay.js (Leaflet версія)
+ * Тримає SVG-шар синхронізованим з картою Leaflet і відповідає
+ * за фактичний рендер (розділ 19 ТЗ: порядок шарів).
  *
- * Шар 3 (паркан) рендериться нижче за шар 5 (вузли) і шар 6 (preview),
- * реалізовано через порядок <g> груп у SVG.
+ * У Google Maps позицію overlay перераховує сам API через draw().
+ * У Leaflet те саме робимо вручну на подіях карти: 'move' (під час
+ * панорамування/зуму) і 'moveend'/'zoomend' (після завершення).
  */
 
 window.FP = window.FP || {};
 
-window.FP.EditorOverlay = class EditorOverlay extends google.maps.OverlayView {
+window.FP.EditorOverlay = class EditorOverlay {
   /**
-   * @param {google.maps.Map} map
+   * @param {L.Map} map
    * @param {SVGSVGElement} svgEl
    * @param {InstanceType<typeof window.FP.model.DataStore>} store
    * @param {InstanceType<typeof window.FP.StateMachine>} sm
    * @param {InstanceType<typeof window.FP.DrawController>} draw
    */
   constructor(map, svgEl, store, sm, draw) {
-    super();
     this.map = map;
     this.svg = svgEl;
     this.store = store;
     this.sm = sm;
     this.draw = draw;
-    this.setMap(map);
 
-    //層 groups, у порядку відображення (розділ 19.1: 3 паркан, 4 розміри, 5 вузли, 6 preview)
+    // Шари, у порядку відображення (розділ 19.1: 3 паркан, 4 розміри, 5 вузли, 6 preview)
     this.gFence = this._makeGroup('layer-fence');
     this.gDimensions = this._makeGroup('layer-dimensions');
     this.gNodes = this._makeGroup('layer-nodes hit-layer');
     this.gPreview = this._makeGroup('layer-preview');
+
+    // Перерендер при будь-якому русі/зумі карти — аналог draw() у Google OverlayView
+    map.on('move zoom', () => this.render());
+    map.on('moveend zoomend', () => this.render());
   }
 
   _makeGroup(className) {
@@ -39,18 +42,6 @@ window.FP.EditorOverlay = class EditorOverlay extends google.maps.OverlayView {
     this.svg.appendChild(g);
     return g;
   }
-
-  onAdd() {
-    // OverlayView lifecycle hook — projection тепер доступна
-    window.FP.geo.bindOverlay(this);
-  }
-
-  /** OverlayView вимагає метод draw() — викликається при кожному русі/зумі карти */
-  draw() {
-    this.render();
-  }
-
-  onRemove() {}
 
   /** Повний перерендер SVG-шару з поточних даних стору + live-preview */
   render() {
@@ -129,7 +120,6 @@ window.FP.EditorOverlay = class EditorOverlay extends google.maps.OverlayView {
     const midX = (a.x + b.x) / 2;
     const midY = (a.y + b.y) / 2;
     let angleDeg = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
-    // DIM-004: розвернути на 180°, якщо інакше текст був би догори ногами
     if (angleDeg > 90 || angleDeg < -90) angleDeg += 180;
 
     const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');

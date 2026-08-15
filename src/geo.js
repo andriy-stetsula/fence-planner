@@ -1,42 +1,37 @@
 /**
- * geo.js
+ * geo.js (Leaflet версія)
  * GEN-008: прив'язка/прилипання рахується в екранних пікселях,
- * геометрія зберігається в координатах карти. Тому потрібні дешеві,
- * часто викликані конвертації в обидва боки при кожному рендері/русі миші.
+ * геометрія зберігається в координатах карти (lat/lng).
  *
- * Реальна конвертація виконується через google.maps.OverlayView
- * (fromLatLngToDivPixel / fromContainerPixelToLatLng), тому цей модуль
- * — тонка обгортка навколо активного overlay-інстансу, яку інші модулі
- * можуть викликати не думаючи про Google Maps API напряму.
+ * У Leaflet немає окремого OverlayView з projection — конвертація
+ * робиться напряму через map.latLngToContainerPoint() / containerPointToLatLng().
+ * Інтерфейс (toScreen/toGeo/distanceMeters/...) лишається той самий,
+ * що й був для Google Maps — інші модулі (draw.js, overlay.js) не знають,
+ * яка карта під капотом.
  */
 
 window.FP = window.FP || {};
 
 window.FP.geo = (() => {
-  /** @type {google.maps.OverlayView|null} */
-  let overlayRef = null;
+  /** @type {L.Map|null} */
+  let mapRef = null;
 
-  function bindOverlay(overlay) {
-    overlayRef = overlay;
+  function bindMap(map) {
+    mapRef = map;
   }
 
   /** @param {{lat:number,lng:number}} geo -> {x,y} у пікселях контейнера карти */
   function toScreen(geo) {
-    if (!overlayRef) return { x: 0, y: 0 };
-    const projection = overlayRef.getProjection();
-    if (!projection) return { x: 0, y: 0 };
-    const latLng = new google.maps.LatLng(geo.lat, geo.lng);
-    const point = projection.fromLatLngToDivPixel(latLng);
+    if (!mapRef) return { x: 0, y: 0 };
+    const point = mapRef.latLngToContainerPoint([geo.lat, geo.lng]);
     return { x: point.x, y: point.y };
   }
 
   /** @param {{x:number,y:number}} screen -> {lat,lng} */
   function toGeo(screen) {
-    if (!overlayRef) return { lat: 0, lng: 0 };
-    const projection = overlayRef.getProjection();
-    if (!projection) return { lat: 0, lng: 0 };
-    const latLng = projection.fromDivPixelToLatLng(new google.maps.Point(screen.x, screen.y));
-    return { lat: latLng.lat(), lng: latLng.lng() };
+    if (!mapRef) return { lat: 0, lng: 0 };
+    const latLng = mapRef.containerPointToLatLng([screen.x, screen.y]);
+    return { lat: latLng.lat, lng: latLng.lng };
   }
 
   /** Метрична відстань між двома geo-точками (формула гаверсинуса) */
@@ -62,7 +57,6 @@ window.FP.geo = (() => {
 
   /**
    * DRW-003: округлення довжини/координат кроком проєкту, а не хардкодом.
-   * Крок винесено в конфіг (fpConfig), дефолт 0.1 м.
    */
   const config = { roundStepMeters: 0.1 };
 
@@ -71,5 +65,5 @@ window.FP.geo = (() => {
     return Math.round(meters / step) * step;
   }
 
-  return { bindOverlay, toScreen, toGeo, distanceMeters, distanceScreenPx, roundLength, config };
+  return { bindMap, toScreen, toGeo, distanceMeters, distanceScreenPx, roundLength, config };
 })();

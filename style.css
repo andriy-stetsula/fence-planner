@@ -23,7 +23,7 @@ html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
 #status-text { margin-left: auto; font-size: 12px; opacity: .8; }
 
 #map-wrap { position: relative; width: 100%; height: calc(100vh - 44px); }
-#map { position: absolute; inset: 0; }
+#map { position: absolute; inset: 0; z-index: 1; }
 
 /* SVG overlay sits above the map, but must not block map panning
    except where an editor element explicitly captures the pointer (PTR-003) */
@@ -33,6 +33,7 @@ html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
   width: 100%;
   height: 100%;
   pointer-events: none; /* re-enabled selectively per-element in overlay.js */
+  z-index: 2;
 }
 #editor-svg .hit-layer { pointer-events: auto; }
 

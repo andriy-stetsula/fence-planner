@@ -1,25 +1,28 @@
 /**
- * main.js
- * Точка входу. Ініціалізує Google Maps, збирає всі модулі докупи,
- * підключає toolbar і pointer-обробники карти.
- *
- * Google Maps викликає window.initMap() через callback= в URL скрипта (index.html).
+ * main.js (Leaflet версія)
+ * Точка входу. Ініціалізує Leaflet-карту (OpenStreetMap tiles, без API-ключа
+ * і без білінгу), збирає всі модулі докупи, підключає toolbar і pointer-обробники.
  */
 
 function initMap() {
-  const map = new google.maps.Map(document.getElementById('map'), {
-    center: { lat: 49.593, lng: 23.482 }, // Дрогобич, як приклад стартової точки
+  const map = L.map('map', {
+    center: [49.593, 23.482], // Дрогобич, як приклад стартової точки
     zoom: 19,
-    mapTypeId: 'satellite',
-    tilt: 0,
-    disableDefaultUI: false,
+    maxZoom: 22,
   });
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  }).addTo(map);
 
   const store = new window.FP.model.DataStore();
   const editorState = new window.FP.model.EditorState();
   const sm = new window.FP.StateMachine(editorState);
   const history = new window.FP.History(store);
   const draw = new window.FP.DrawController(store, sm, history);
+
+  window.FP.geo.bindMap(map);
 
   const svgEl = document.getElementById('editor-svg');
   const overlay = new window.FP.EditorOverlay(map, svgEl, store, sm, draw);
@@ -68,20 +71,30 @@ function initMap() {
 
   // --- Map pointer wiring ---
   // PTR-003: клік по карті в режимі select не повинен нічого малювати —
-  // panoramування Google Maps лишається штатним, бо ми не викликаємо
-  // e.stop() і не блокуємо defaultUI.
-  map.addListener('click', (e) => {
+  // панорамування Leaflet лишається штатним, бо ми не викликаємо
+  // L.DomEvent.stop() і не блокуємо взаємодію з картою.
+  map.on('click', (e) => {
     if (sm.state.activeTool !== 'draw') return;
-    const geoPoint = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+    const geoPoint = { lat: e.latlng.lat, lng: e.latlng.lng };
     draw.onMapClick(geoPoint);
     rerender();
     updateFinishButton();
   });
 
-  map.addListener('mousemove', (e) => {
+  map.on('mousemove', (e) => {
     if (sm.state.activeTool !== 'draw' || !draw.isDrafting()) return;
-    draw.livePreviewGeo = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+    draw.livePreviewGeo = { lat: e.latlng.lat, lng: e.latlng.lng };
     rerender();
+  });
+
+  // Коли активний інструмент "draw" — тимчасово вимикаємо перетягування карти,
+  // щоб клік по карті не одночасно і панорамував, і малював (PTR-003).
+  sm.onChange((state) => {
+    if (state.activeTool === 'draw') {
+      map.dragging.disable();
+    } else {
+      map.dragging.enable();
+    }
   });
 
   // --- Keyboard wiring ---
@@ -116,10 +129,7 @@ function initMap() {
     },
   });
 
-  // Ре-рендер overlay при зумі/панорамуванні виконує сам Google Maps
-  // через OverlayView.draw() — додаткова підписка не потрібна.
-
   window.__fp_debug = { map, store, sm, history, draw, overlay };
 }
 
-window.initMap = initMap;
+window.addEventListener('DOMContentLoaded', initMap);

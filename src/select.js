@@ -22,8 +22,9 @@ window.FP.SelectionController = class SelectionController {
    * @param {L.Map} map
    * @param {() => void} rerender
    * @param {InstanceType<typeof window.FP.SnapController>} [snap]
+   * @param {InstanceType<typeof window.FP.ShapesController>} [shapesCtrl] - розділ 17
    */
-  constructor(store, sm, history, map, rerender, snap = null, onSegmentClick = null, onGapClick = null, onGateLineClick = null, onPostLineClick = null) {
+  constructor(store, sm, history, map, rerender, snap = null, onSegmentClick = null, onGapClick = null, onGateLineClick = null, onPostLineClick = null, shapesCtrl = null) {
     this.store = store;
     this.sm = sm;
     this.history = history;
@@ -34,6 +35,7 @@ window.FP.SelectionController = class SelectionController {
     this.onGapClick = onGapClick;
     this.onGateLineClick = onGateLineClick;
     this.onPostLineClick = onPostLineClick;
+    this.shapesCtrl = shapesCtrl;
 
     this.DRAG_THRESHOLD_PX = 5; // PTR-001
 
@@ -76,6 +78,20 @@ window.FP.SelectionController = class SelectionController {
       const latLng = this.map.mouseEventToLatLng(e);
       const clickGeo = { lat: latLng.lat, lng: latLng.lng };
       this._startSession('run', runId, e, null, { pointAId, pointBId, clickGeo });
+    });
+  }
+
+  /**
+   * Викликається з overlay.js при рендері кожного об'єкта ділянки (розділ 17).
+   * На відміну від attachObjectHandlers (ворота/пости) — тут дозволене
+   * перетягування (OBJ-003), тому старт drag-сесії, а не миттєвий select.
+   */
+  attachShapeHandlers(el, shapeId) {
+    if (!this.isActive()) return;
+    el.style.pointerEvents = 'all';
+    el.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this._startSession('shape', shapeId, e);
     });
   }
 
@@ -142,11 +158,18 @@ window.FP.SelectionController = class SelectionController {
 
     if (this.session.type === 'point') {
       this._dragPoint(this.session.id, newGeo);
+    } else if (this.session.type === 'shape') {
+      this._dragShape(this.session.id, newGeo);
     } else {
       this._dragRun(this.session.id, newGeo);
     }
 
     this.rerender();
+  }
+
+  /** Перетягування об'єкта ділянки (OBJ-003, розділ 17) — вільне переміщення, знімає анкер лінії */
+  _dragShape(shapeId, newGeo) {
+    if (this.shapesCtrl) this.shapesCtrl.moveTo(shapeId, newGeo);
   }
 
   _dragPoint(pointId, newGeo) {
@@ -197,6 +220,9 @@ window.FP.SelectionController = class SelectionController {
             this.snap.closeLoop(this.session.id, candidate.runId); // LOOP-001/002
           } else if (candidate.kind === 'segment') {
             this.snap.createTJoint(this.session.id, candidate); // SNP-004: T-стик
+          } else if (candidate.kind === 'object') {
+            // 17.4: лише вирівняти координати з об'єктом ділянки, без Joint-а
+            this.store.movePoint(this.session.id, candidate.geo);
           } else {
             this.snap.createJoint(this.session.id, candidate.pointId); // endpoint | node
           }
@@ -240,6 +266,8 @@ window.FP.SelectionController = class SelectionController {
       // Це був звичайний клік без руху — обробити як вибір (SEL-001/SEL-003/SEL-004)
       if (this.session.type === 'point') {
         this.sm.select({ pointId: this.session.id, runId: this.session.runId });
+      } else if (this.session.type === 'shape') {
+        this.sm.select({ objectId: this.session.id }); // розділ 17
       } else {
         this.sm.select({ runId: this.session.id });
         if (this.session.segmentInfo && this.onSegmentClick) {
@@ -271,6 +299,8 @@ window.FP.SelectionController = class SelectionController {
         this.store.removeGate(s.selectedObjectId);
       } else if (this.store.posts.has(s.selectedObjectId)) {
         this.store.removePost(s.selectedObjectId);
+      } else if (this.store.shapes.has(s.selectedObjectId)) {
+        this.store.removeShape(s.selectedObjectId); // 8.1, розділ 17
       }
     } else if (s.selectedRunId) {
       this.store.removeRun(s.selectedRunId);

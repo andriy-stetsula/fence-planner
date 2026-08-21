@@ -27,6 +27,8 @@ function initMap() {
   const gateCtrl = new window.FP.GateController(store, gapCtrl);
   const slidingGateCtrl = new window.FP.SlidingGateController(store, sm, history);
   const postsCtrl = new window.FP.PostsController(store);
+  const shapesCtrl = new window.FP.ShapesController(store);
+  snap.setShapesController(shapesCtrl); // 17.4: найнижчий тир прилипання
 
   window.FP.geo.bindMap(map);
 
@@ -41,9 +43,10 @@ function initMap() {
     (pointAId, pointBId) => openLengthPopover(pointAId, pointBId),
     (runId, pointAId, pointBId, clickGeo) => handleGapClick(runId, pointAId, pointBId, clickGeo),
     (runId, pointAId, pointBId, clickGeo) => handleGateLineClick(runId, pointAId, pointBId, clickGeo),
-    (runId, pointAId, pointBId, clickGeo) => handlePostLineClick(runId, pointAId, pointBId, clickGeo)
+    (runId, pointAId, pointBId, clickGeo) => handlePostLineClick(runId, pointAId, pointBId, clickGeo),
+    shapesCtrl
   );
-  const overlay = new window.FP.EditorOverlay(map, svgEl, store, sm, draw, selection, slidingGateCtrl, postsCtrl);
+  const overlay = new window.FP.EditorOverlay(map, svgEl, store, sm, draw, selection, slidingGateCtrl, postsCtrl, shapesCtrl);
 
   function rerender() {
     try {
@@ -52,6 +55,7 @@ function initMap() {
       updateJointPopover();
       updateGatePopover();
       updateSlidingGatePopover();
+      updateShapeResizePopover();
     } catch (err) {
       console.error('Editor render failed:', err);
     }
@@ -83,7 +87,12 @@ function initMap() {
     if (s.selectedPointId && !store.points.has(s.selectedPointId)) {
       s.selectedPointId = null;
     }
-    if (s.selectedObjectId && !store.gates.has(s.selectedObjectId) && !store.posts.has(s.selectedObjectId)) {
+    if (
+      s.selectedObjectId &&
+      !store.gates.has(s.selectedObjectId) &&
+      !store.posts.has(s.selectedObjectId) &&
+      !store.shapes.has(s.selectedObjectId)
+    ) {
       s.selectedObjectId = null;
     }
   }
@@ -154,6 +163,22 @@ function initMap() {
       rerender();
       return;
     }
+    if (sm.state.activeTool === 'shapes') {
+      // 5/17: "Розміщення об'єкта" — наступний клік по карті ставить обраний тип
+      const geoPoint = { lat: e.latlng.lat, lng: e.latlng.lng };
+      const type = document.getElementById('shape-type-select').value;
+      history.beginAction();
+      const result = shapesCtrl.placeAt(type, geoPoint);
+      if (!result.success) {
+        history.cancelAction();
+        alert(result.message);
+        return;
+      }
+      history.commitAction();
+      sm.select({ objectId: result.shapeId });
+      rerender();
+      return;
+    }
     if (sm.state.activeTool === 'select') {
       // Клік по порожній карті (не по лінії/вузлу — ті самі мають stopPropagation)
       // знімає вибір, UI-005.
@@ -182,7 +207,8 @@ function initMap() {
       state.activeTool === 'gap' ||
       state.activeTool === 'gate' ||
       state.activeTool === 'slidingGate' ||
-      state.activeTool === 'posts'
+      state.activeTool === 'posts' ||
+      state.activeTool === 'shapes'
     ) {
       map.dragging.disable();
     } else {
@@ -606,7 +632,59 @@ function initMap() {
     });
   });
 
-  window.__fp_debug = { map, store, sm, history, draw, overlay, selection, snap, jointCtrl, gapCtrl, gateCtrl, slidingGateCtrl, postsCtrl };
+  // --- Контекстна панель ресайзу об'єкта ділянки: house/pool (розділ 17.1/OBJ-003) ---
+  const shapeResizePopover = document.getElementById('shape-resize-popover');
+  const shapeWidthInput = document.getElementById('shape-width-input');
+  const shapeHeightInput = document.getElementById('shape-height-input');
+
+  function updateShapeResizePopover() {
+    const shapeId = sm.state.selectedObjectId;
+    if (!shapeId) {
+      shapeResizePopover.hidden = true;
+      return;
+    }
+    const shape = store.shapes.get(shapeId);
+    const cfg = shape ? shapesCtrl.getTypeConfig(shape.type) : null;
+    if (!shape || !cfg || !cfg.resizable) {
+      shapeResizePopover.hidden = true;
+      return;
+    }
+
+    shapeWidthInput.value = shape.widthM.toFixed(1);
+    shapeHeightInput.value = shape.heightM.toFixed(1);
+
+    const geo = shapesCtrl.getGeo(shape);
+    const screen = window.FP.geo.toScreen(geo);
+    const mapWrap = document.getElementById('map-wrap').getBoundingClientRect();
+    let left = screen.x + 16;
+    let top = screen.y - 20;
+    left = Math.max(8, Math.min(left, mapWrap.width - 180));
+    top = Math.max(8, Math.min(top, mapWrap.height - 60));
+    shapeResizePopover.style.left = `${left}px`;
+    shapeResizePopover.style.top = `${top}px`;
+    shapeResizePopover.hidden = false;
+  }
+
+  function applyShapeResize() {
+    const shapeId = sm.state.selectedObjectId;
+    if (!shapeId) return;
+    const widthM = parseFloat(shapeWidthInput.value);
+    const heightM = parseFloat(shapeHeightInput.value);
+    if (Number.isNaN(widthM) || widthM <= 0 || Number.isNaN(heightM) || heightM <= 0) return;
+
+    history.beginAction();
+    shapesCtrl.resize(shapeId, widthM, heightM);
+    history.commitAction();
+    rerender();
+  }
+
+  document.getElementById('shape-resize-apply').addEventListener('click', applyShapeResize);
+  document.getElementById('shape-resize-close').addEventListener('click', () => {
+    sm.clearSelection();
+    rerender();
+  });
+
+  window.__fp_debug = { map, store, sm, history, draw, overlay, selection, snap, jointCtrl, gapCtrl, gateCtrl, slidingGateCtrl, postsCtrl, shapesCtrl };
 }
 
 window.addEventListener('DOMContentLoaded', initMap);

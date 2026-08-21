@@ -62,6 +62,11 @@ window.FP.StateMachine = class StateMachine {
         // клік по лінії/стійці воріт ставить додатковий стовп.
         this.state.mode = 'placeObject';
         break;
+      case 'shapes':
+        // 5/17: Site objects — "Розміщення об'єкта" (розділ 4): наступний
+        // клік по карті ставить обраний тип об'єкта ділянки.
+        this.state.mode = 'placeObject';
+        break;
       default:
         this.state.mode = 'select';
     }

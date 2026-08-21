@@ -37,6 +37,15 @@ window.FP.SnapController = class SnapController {
     // 9.3/LOOP-004: тимчасово заблоковані цілі після роз'єднання/відкриття.
     // targetPointId -> geo позиція в момент блокування (щоб виміряти "помітно відведено")
     this._blockedOrigins = new Map();
+
+    // 17.4: опційний зв'язок з об'єктами ділянки (розділ 17) — найнижчий
+    // пріоритет тиру прилипання, дивись _findObjectAnchorTarget.
+    this.shapesCtrl = null;
+  }
+
+  /** Підключити ShapesController після ініціалізації (main.js, розділ 17.4) */
+  setShapesController(shapesCtrl) {
+    this.shapesCtrl = shapesCtrl;
   }
 
   /**
@@ -59,7 +68,31 @@ window.FP.SnapController = class SnapController {
     const node = this._findExistingNodeTarget(draggedPointId, currentGeo);
     if (node) return node;
 
-    return this._findSegmentSnapTarget(draggedPointId, currentGeo);
+    const segment = this._findSegmentSnapTarget(draggedPointId, currentGeo);
+    if (segment) return segment;
+
+    return this._findObjectAnchorTarget(draggedPointId, currentGeo); // 17.4: найнижчий пріоритет
+  }
+
+  /**
+   * 17.4, найнижчий пріоритет: вирівняти вільний кінець з об'єктом ділянки
+   * (напр. parcel pillar як межовий знак) — лише візуальне вирівнювання
+   * координат на pointerup (select.js), без Joint-а: об'єкти ділянки не є
+   * частиною Run/Point моделі.
+   */
+  _findObjectAnchorTarget(draggedPointId, currentGeo) {
+    if (!this.shapesCtrl) return null;
+    let best = null;
+    for (const shape of this.store.shapes.values()) {
+      const geo = this.shapesCtrl.getGeo(shape);
+      if (!geo) continue;
+      if (this._isBlocked(shape.id, currentGeo)) continue;
+      const distPx = window.FP.geo.distanceScreenPx(currentGeo, geo);
+      if (distPx <= this.ATTACH_RADIUS_PX && (!best || distPx < best.distPx)) {
+        best = { kind: 'object', shapeId: shape.id, geo, distPx };
+      }
+    }
+    return best;
   }
 
   /** Розділ 11: протилежний вільний кінець того самого прогону (замикання) */

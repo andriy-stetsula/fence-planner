@@ -113,6 +113,20 @@ window.FP.geo = (() => {
     };
   }
 
+  /**
+   * Обертання вектора (x,y) навколо початку координат на angleDeg
+   * (розділ 17: рендер прямокутних об'єктів ділянки під кутом).
+   */
+  function rotateXY(xy, angleDeg) {
+    const rad = (angleDeg * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    return {
+      x: xy.x * cos - xy.y * sin,
+      y: xy.x * sin + xy.y * cos,
+    };
+  }
+
   return {
     bindMap,
     toScreen,
@@ -124,5 +138,6 @@ window.FP.geo = (() => {
     pointAtDistanceAlongDirection,
     toLocalXY,
     fromLocalXY,
+    rotateXY,
   };
 })();

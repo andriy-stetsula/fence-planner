@@ -20,8 +20,9 @@ window.FP.EditorOverlay = class EditorOverlay {
    * @param {InstanceType<typeof window.FP.SelectionController>} [selection]
    * @param {InstanceType<typeof window.FP.SlidingGateController>} [slidingGate]
    * @param {InstanceType<typeof window.FP.PostsController>} [posts]
+   * @param {InstanceType<typeof window.FP.ShapesController>} [shapesCtrl] - розділ 17
    */
-  constructor(map, svgEl, store, sm, draw, selection = null, slidingGate = null, posts = null) {
+  constructor(map, svgEl, store, sm, draw, selection = null, slidingGate = null, posts = null, shapesCtrl = null) {
     this.map = map;
     this.svg = svgEl;
     this.store = store;
@@ -30,14 +31,19 @@ window.FP.EditorOverlay = class EditorOverlay {
     this.selection = selection;
     this.slidingGate = slidingGate;
     this.posts = posts;
+    this.shapesCtrl = shapesCtrl;
 
-    // Шари, у порядку відображення (розділ 19.1: 3 паркан+ворота+стовпи, 4 розміри, 5 вузли, 6 preview)
+    // Шари, у порядку відображення (розділ 19.1: 2 об'єкти ділянки — нижче
+    // паркану; 3 паркан+ворота+стовпи, 4 розміри, 5 вузли, 6 preview)
+    this.gShapes = this._makeGroup('layer-shapes hit-layer');
     this.gFence = this._makeGroup('layer-fence');
     this.gPosts = this._makeGroup('layer-posts');
     this.gGates = this._makeGroup('layer-gates hit-layer');
     this.gDimensions = this._makeGroup('layer-dimensions');
     this.gNodes = this._makeGroup('layer-nodes hit-layer');
     this.gPreview = this._makeGroup('layer-preview');
+
+    this._initShapeRenderers();
 
     // Перерендер при будь-якому русі/зумі карти — аналог draw() у Google OverlayView
     map.on('move zoom', () => this.render());
@@ -53,12 +59,19 @@ window.FP.EditorOverlay = class EditorOverlay {
 
   /** Повний перерендер SVG-шару з поточних даних стору + live-preview */
   render() {
+    this._clear(this.gShapes);
     this._clear(this.gFence);
     this._clear(this.gPosts);
     this._clear(this.gGates);
     this._clear(this.gDimensions);
     this._clear(this.gNodes);
     this._clear(this.gPreview);
+
+    if (this.shapesCtrl) {
+      for (const shape of this.store.shapes.values()) {
+        this._renderShape(shape);
+      }
+    }
 
     for (const run of this.store.runs.values()) {
       this._renderRun(run);
@@ -88,7 +101,7 @@ window.FP.EditorOverlay = class EditorOverlay {
     // Для T-стику (segment) ціль — це точка проекції на сегмент, а не існуючий Point.
     if (this.selection && this.selection.session && this.selection.activeSnapCandidate) {
       const candidate = this.selection.activeSnapCandidate;
-      if (candidate.kind === 'segment') {
+      if (candidate.kind === 'segment' || candidate.kind === 'object') {
         this._renderSnapHalo(candidate.geo);
       } else {
         const target = this.store.points.get(candidate.pointId);
@@ -340,6 +353,127 @@ window.FP.EditorOverlay = class EditorOverlay {
     const b = window.FP.geo.toScreen(preview.to);
     this._line(this.gPreview, a, b, 'fence-line preview');
     this._dimensionLabel(a, b, preview.lengthMeters, true);
+  }
+
+  /**
+   * Розділ 17: об'єкти ділянки — top-view символи, нижче лінії паркану.
+   * Реєстр рендерерів по типу, ініціалізується один раз у конструкторі.
+   */
+  _initShapeRenderers() {
+    this._shapeRenderers = {
+      house: (group, shape, geo) => {
+        const corners = this._shapeRectCorners(geo, shape.widthM, shape.heightM, shape.rotationDeg);
+        this._appendPolygon(group, corners, 'shape-body shape-house-body');
+        this._appendLine(group, corners[0], corners[2], 'shape-roof-line');
+        this._appendLine(group, corners[1], corners[3], 'shape-roof-line');
+      },
+      pool: (group, shape, geo) => {
+        const corners = this._shapeRectCorners(geo, shape.widthM, shape.heightM, shape.rotationDeg);
+        this._appendPolygon(group, corners, 'shape-body shape-pool-body');
+      },
+      arbor: (group, shape, geo) => {
+        const corners = this._shapeRectCorners(geo, shape.widthM, shape.heightM, shape.rotationDeg);
+        this._appendPolygon(group, corners, 'shape-body shape-arbor-body');
+        // хрестова решітка — top-view ознака перголи/арбору
+        this._appendLine(group, corners[0], corners[2], 'shape-arbor-lattice');
+        this._appendLine(group, corners[1], corners[3], 'shape-arbor-lattice');
+      },
+      tree: (group, shape, geo, center) => {
+        const edgeGeo = window.FP.geo.fromLocalXY(geo, { x: shape.widthM / 2, y: 0 });
+        const radiusPx = Math.max(6, window.FP.geo.distanceScreenPx(geo, edgeGeo));
+        const canopy = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        canopy.setAttribute('cx', center.x);
+        canopy.setAttribute('cy', center.y);
+        canopy.setAttribute('r', radiusPx);
+        canopy.setAttribute('class', 'shape-body shape-tree-canopy');
+        group.appendChild(canopy);
+        const trunk = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        trunk.setAttribute('cx', center.x);
+        trunk.setAttribute('cy', center.y);
+        trunk.setAttribute('r', 2.5);
+        trunk.setAttribute('class', 'shape-tree-trunk');
+        group.appendChild(trunk);
+      },
+      mailbox: (group, shape, geo, center) => {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        el.setAttribute('x', center.x - 5);
+        el.setAttribute('y', center.y - 5);
+        el.setAttribute('width', 10);
+        el.setAttribute('height', 10);
+        el.setAttribute('class', 'shape-body shape-mailbox-body');
+        group.appendChild(el);
+        // маленький "прапорець" конверта — top-view ознака поштової скриньки
+        const flag = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+        flag.setAttribute(
+          'points',
+          `${center.x - 5},${center.y - 5} ${center.x},${center.y - 10} ${center.x + 5},${center.y - 5}`
+        );
+        flag.setAttribute('class', 'shape-mailbox-flag');
+        group.appendChild(flag);
+      },
+      parcelPillar: (group, shape, geo, center) => {
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        el.setAttribute('x', center.x - 4);
+        el.setAttribute('y', center.y - 4);
+        el.setAttribute('width', 8);
+        el.setAttribute('height', 8);
+        el.setAttribute('class', 'shape-body shape-parcel-pillar-body');
+        group.appendChild(el);
+      },
+    };
+  }
+
+  /** 4 екранні кути прямокутника widthM x heightM з центром у geo, обернені на rotationDeg */
+  _shapeRectCorners(geo, widthM, heightM, rotationDeg) {
+    const hw = widthM / 2;
+    const hh = heightM / 2;
+    const localCorners = [
+      { x: -hw, y: -hh },
+      { x: hw, y: -hh },
+      { x: hw, y: hh },
+      { x: -hw, y: hh },
+    ];
+    return localCorners.map((c) => {
+      const rotated = window.FP.geo.rotateXY(c, rotationDeg || 0);
+      const cornerGeo = window.FP.geo.fromLocalXY(geo, rotated);
+      return window.FP.geo.toScreen(cornerGeo);
+    });
+  }
+
+  _appendPolygon(group, screenCorners, className) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    el.setAttribute('points', screenCorners.map((c) => `${c.x},${c.y}`).join(' '));
+    el.setAttribute('class', className);
+    group.appendChild(el);
+    return el;
+  }
+
+  _appendLine(group, a, b, className) {
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    el.setAttribute('x1', a.x);
+    el.setAttribute('y1', a.y);
+    el.setAttribute('x2', b.x);
+    el.setAttribute('y2', b.y);
+    el.setAttribute('class', className);
+    group.appendChild(el);
+    return el;
+  }
+
+  /** Один об'єкт ділянки (розділ 17) — вибирає рендерер за типом, OBJ-002/OBJ-003 */
+  _renderShape(shape) {
+    const geo = this.shapesCtrl.getGeo(shape);
+    if (!geo) return;
+    const isSelected = this.sm.state.selectedObjectId === shape.id;
+    const center = window.FP.geo.toScreen(geo);
+
+    const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    group.setAttribute('class', `shape shape-${shape.type}${isSelected ? ' selected' : ''}`);
+
+    const renderer = this._shapeRenderers[shape.type];
+    if (renderer) renderer(group, shape, geo, center);
+
+    this.gShapes.appendChild(group);
+    if (this.selection) this.selection.attachShapeHandlers(group, shape.id);
   }
 
   _line(group, a, b, className) {

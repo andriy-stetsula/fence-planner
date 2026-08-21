@@ -123,6 +123,48 @@ class Post {
 }
 
 /**
+ * Shape — об'єкт ділянки (розділ 17 ТЗ): будинок, дерево, басейн, арбор,
+ * поштова скринька (mailbox/конверт), стовп ділянки (parcel pillar).
+ * Немає структурного зв'язку з парканом — це не Run/Point, тому геометрія
+ * зберігається окремо.
+ *
+ * geo — вільна позиція (центр об'єкта), використовується лише коли объект
+ * НЕ прив'язаний до сегмента лінії паркану.
+ * 17.4: anchorable-типи (mailbox), поставлені близько до лінії, зберігають
+ * анкер (anchorRunId/anchorPointAId/anchorPointBId + t) так само, як
+ * Additional post (розділ 16, MOV-003) — об'єкт "живо" слідує за прогоном
+ * при його переміщенні. Ручне перетягування об'єкта знімає анкер
+ * (DataStore.detachShape), як і видалення прив'язаного прогону.
+ * widthM/heightM — габарити в метрах (OBJ-003: house/pool ресайзяться,
+ * інші типи мають фіксований дефолтний розмір типу, розділ 17 shapes.js).
+ * rotationDeg — орієнтація прямокутних типів (0 = вздовж довготи).
+ */
+class Shape {
+  constructor({
+    type,
+    geo = null,
+    widthM,
+    heightM,
+    rotationDeg = 0,
+    anchorRunId = null,
+    anchorPointAId = null,
+    anchorPointBId = null,
+    t = null,
+  }) {
+    this.id = nextId('shape');
+    this.type = type; // 'house' | 'tree' | 'pool' | 'arbor' | 'mailbox' | 'parcelPillar'
+    this.geo = geo;
+    this.widthM = widthM;
+    this.heightM = heightM;
+    this.rotationDeg = rotationDeg;
+    this.anchorRunId = anchorRunId;
+    this.anchorPointAId = anchorPointAId;
+    this.anchorPointBId = anchorPointBId;
+    this.t = t;
+  }
+}
+
+/**
  * Editor state — єдине джерело правди про поточний стан UI.
  * Розділ 4 ТЗ: явний стан, щоб один клік не робив кілька речей одразу.
  */
@@ -160,6 +202,8 @@ class DataStore {
     this.gates = new Map();
     /** @type {Map<string, Post>} розділ 16: Additional posts */
     this.posts = new Map();
+    /** @type {Map<string, Shape>} розділ 17: об'єкти ділянки */
+    this.shapes = new Map();
   }
 
   createGate(gateProps) {
@@ -209,6 +253,64 @@ class DataStore {
     return post.geo;
   }
 
+  createShape(shapeProps) {
+    const shape = new Shape(shapeProps);
+    this.shapes.set(shape.id, shape);
+    return shape;
+  }
+
+  removeShape(shapeId) {
+    this.shapes.delete(shapeId);
+  }
+
+  /**
+   * 17.4: поточна geo-позиція об'єкта. Якщо прив'язаний до сегмента лінії —
+   * рахується наживо з поточних координат anchor-точок (як getPostGeo,
+   * MOV-003: слідує за прогоном при переміщенні). Інакше — застигла geo.
+   */
+  getShapeGeo(shape) {
+    if (shape.anchorPointAId && shape.anchorPointBId) {
+      const a = this.points.get(shape.anchorPointAId);
+      const b = this.points.get(shape.anchorPointBId);
+      if (a && b) {
+        return {
+          lat: a.geographicPosition.lat + (b.geographicPosition.lat - a.geographicPosition.lat) * shape.t,
+          lng: a.geographicPosition.lng + (b.geographicPosition.lng - a.geographicPosition.lng) * shape.t,
+        };
+      }
+    }
+    return shape.geo;
+  }
+
+  /** Ручне перетягування об'єкта знімає "живу" прив'язку до лінії, застигаючи в поточній geo. */
+  detachShape(shapeId) {
+    const shape = this.shapes.get(shapeId);
+    if (!shape) return;
+    if (shape.anchorPointAId && shape.anchorPointBId) {
+      shape.geo = this.getShapeGeo(shape);
+      shape.anchorRunId = null;
+      shape.anchorPointAId = null;
+      shape.anchorPointBId = null;
+      shape.t = null;
+    }
+  }
+
+  /** Перемістити об'єкт у нову вільну geo-позицію (OBJ-003, розділ 17) */
+  moveShape(shapeId, newGeo) {
+    const shape = this.shapes.get(shapeId);
+    if (!shape) return;
+    this.detachShape(shapeId);
+    shape.geo = newGeo;
+  }
+
+  /** OBJ-003: ресайз house/pool через попап ширини/довжини */
+  resizeShape(shapeId, widthM, heightM) {
+    const shape = this.shapes.get(shapeId);
+    if (!shape) return;
+    if (widthM > 0) shape.widthM = widthM;
+    if (heightM > 0) shape.heightM = heightM;
+  }
+
   createRun() {
     const run = new Run();
     this.runs.set(run.id, run);
@@ -242,6 +344,16 @@ class DataStore {
         post.anchorPointAId = null;
         post.anchorPointBId = null;
         post.t = null;
+      }
+    }
+    // 17.4/8.1: те саме для об'єктів ділянки, "живо" прив'язаних до цього прогону (mailbox)
+    for (const shape of this.shapes.values()) {
+      if (shape.anchorRunId === runId) {
+        shape.geo = this.getShapeGeo(shape);
+        shape.anchorRunId = null;
+        shape.anchorPointAId = null;
+        shape.anchorPointBId = null;
+        shape.t = null;
       }
     }
     for (const pid of run.pointIds) {
@@ -373,6 +485,9 @@ class DataStore {
       posts: new Map(
         Array.from(this.posts.entries()).map(([k, v]) => [k, { ...v }])
       ),
+      shapes: new Map(
+        Array.from(this.shapes.entries()).map(([k, v]) => [k, { ...v }])
+      ),
     };
   }
 
@@ -382,9 +497,10 @@ class DataStore {
     this.joints = snapshot.joints;
     this.gates = snapshot.gates || new Map();
     this.posts = snapshot.posts || new Map();
+    this.shapes = snapshot.shapes || new Map();
   }
 }
 
 // експорт у глобальний неймспейс (проєкт без бандлера для простоти старту)
 window.FP = window.FP || {};
-window.FP.model = { Point, Run, Joint, Gate, Post, EditorState, DataStore, nextId };
+window.FP.model = { Point, Run, Joint, Gate, Post, Shape, EditorState, DataStore, nextId };

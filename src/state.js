@@ -57,9 +57,20 @@ window.FP.StateMachine = class StateMachine {
       case 'slidingGate':
         this.state.mode = 'drawSlidingGate';
         break;
+      case 'posts':
+        // 5/16: Additional posts — "Розміщення об'єкта" (розділ 4): наступний
+        // клік по лінії/стійці воріт ставить додатковий стовп.
+        this.state.mode = 'placeObject';
+        break;
       default:
         this.state.mode = 'select';
     }
+    this._emit();
+  }
+
+  /** PST-003: перемикач змінює лише видимість автоматичних LINE posts. */
+  togglePosts() {
+    this.state.showAutoPosts = !this.state.showAutoPosts;
     this._emit();
   }
 

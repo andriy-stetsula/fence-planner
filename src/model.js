@@ -98,6 +98,31 @@ class Gate {
 }
 
 /**
+ * Post — "Additional post" (розділ 16 ТЗ), стовп, який користувач ставить
+ * вручну на лінію або біля стійки воріт. НЕ використовується для END/CORNER
+ * (це вже існуючі Point з role 'end'/внутрішній вузол) і НЕ для LINE posts
+ * (ті рахуються на льоту з довжини/модуля, PST-001, і в моделі не зберігаються).
+ *
+ * Прив'язка до лінії зберігається як анкер (anchorPointAId/anchorPointBId + t,
+ * параметр 0..1 вздовж сегмента), а не застигла geo-координата — так стовп
+ * автоматично слідує за прогоном при його переміщенні (MOV-003).
+ * Прив'язка до стійки воріт — attachedGateId/gateSide, статична offset-точка
+ * (ворота самі поки не рухаються після створення, як і решта коду).
+ */
+class Post {
+  constructor({ geo = null, attachedRunId = null, anchorPointAId = null, anchorPointBId = null, t = null, attachedGateId = null, gateSide = null }) {
+    this.id = nextId('post');
+    this.geo = geo; // використовується лише коли пост не прив'язаний до лінії/воріт
+    this.attachedRunId = attachedRunId;
+    this.anchorPointAId = anchorPointAId;
+    this.anchorPointBId = anchorPointBId;
+    this.t = t;
+    this.attachedGateId = attachedGateId;
+    this.gateSide = gateSide;
+  }
+}
+
+/**
  * Editor state — єдине джерело правди про поточний стан UI.
  * Розділ 4 ТЗ: явний стан, щоб один клік не робив кілька речей одразу.
  */
@@ -116,6 +141,9 @@ class EditorState {
     this.snapCandidate = null;
 
     this.dragSession = null; // { targetType, targetId, startScreen, moved }
+
+    /** PST-003: перемикач видимості лише автоматичних LINE posts. */
+    this.showAutoPosts = true;
   }
 }
 
@@ -130,6 +158,8 @@ class DataStore {
     this.joints = new Map();
     /** @type {Map<string, Gate>} */
     this.gates = new Map();
+    /** @type {Map<string, Post>} розділ 16: Additional posts */
+    this.posts = new Map();
   }
 
   createGate(gateProps) {
@@ -140,6 +170,43 @@ class DataStore {
 
   removeGate(gateId) {
     this.gates.delete(gateId);
+    // 8.1: пов'язані об'єкти не повинні залишатися з посиланням на неіснуючі ворота
+    for (const post of this.posts.values()) {
+      if (post.attachedGateId === gateId) {
+        post.geo = this.getPostGeo(post);
+        post.attachedGateId = null;
+        post.gateSide = null;
+      }
+    }
+  }
+
+  createPost(postProps) {
+    const post = new Post(postProps);
+    this.posts.set(post.id, post);
+    return post;
+  }
+
+  removePost(postId) {
+    this.posts.delete(postId);
+  }
+
+  /**
+   * Поточна geo-позиція Additional post. Якщо прив'язаний до сегмента —
+   * рахується наживо з поточних координат anchor-точок (MOV-003: слідує
+   * за прогоном при переміщенні). Інакше — застигла geo.
+   */
+  getPostGeo(post) {
+    if (post.anchorPointAId && post.anchorPointBId) {
+      const a = this.points.get(post.anchorPointAId);
+      const b = this.points.get(post.anchorPointBId);
+      if (a && b) {
+        return {
+          lat: a.geographicPosition.lat + (b.geographicPosition.lat - a.geographicPosition.lat) * post.t,
+          lng: a.geographicPosition.lng + (b.geographicPosition.lng - a.geographicPosition.lng) * post.t,
+        };
+      }
+    }
+    return post.geo;
   }
 
   createRun() {
@@ -166,6 +233,17 @@ class DataStore {
   removeRun(runId) {
     const run = this.runs.get(runId);
     if (!run) return;
+    // 8.1: додаткові стовпи, прив'язані до цього прогону, не повинні лишитися
+    // з битим runId/anchorPointId — застигаємо їхню останню позицію.
+    for (const post of this.posts.values()) {
+      if (post.attachedRunId === runId) {
+        post.geo = this.getPostGeo(post);
+        post.attachedRunId = null;
+        post.anchorPointAId = null;
+        post.anchorPointBId = null;
+        post.t = null;
+      }
+    }
     for (const pid of run.pointIds) this.points.delete(pid);
     this.runs.delete(runId);
   }
@@ -223,6 +301,9 @@ class DataStore {
       gates: new Map(
         Array.from(this.gates.entries()).map(([k, v]) => [k, { ...v }])
       ),
+      posts: new Map(
+        Array.from(this.posts.entries()).map(([k, v]) => [k, { ...v }])
+      ),
     };
   }
 
@@ -231,9 +312,10 @@ class DataStore {
     this.points = snapshot.points;
     this.joints = snapshot.joints;
     this.gates = snapshot.gates || new Map();
+    this.posts = snapshot.posts || new Map();
   }
 }
 
 // експорт у глобальний неймспейс (проєкт без бандлера для простоти старту)
 window.FP = window.FP || {};
-window.FP.model = { Point, Run, Joint, Gate, EditorState, DataStore, nextId };
+window.FP.model = { Point, Run, Joint, Gate, Post, EditorState, DataStore, nextId };

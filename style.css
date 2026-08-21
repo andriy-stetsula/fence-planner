@@ -113,6 +113,14 @@ html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
 }
 .gate-popover button.active { background: #ffe066; border-color: #d9a300; }
 
+/* --- Стовпи, розділ 16 ТЗ --- */
+/* PST-002: ковпаки ніколи не малюються — свідомо не додаємо жодного cap-елемента. */
+.post-line { fill: #999; pointer-events: none; } /* PST-001: менші за END/CORNER, не handle */
+.post-additional { fill: #444; stroke: #222; stroke-width: 1; pointer-events: all; cursor: pointer; }
+.post-additional.selected { fill: #1a3fa8; stroke: #4a5cf0; stroke-width: 2; }
+
+#btn-toggle-posts.active { background: #4a5cf0; border-color: #4a5cf0; }
+
 /* --- Розсувні ворота, розділ 14 ТЗ --- */
 .sliding-gate-panel { stroke: #2f6bff; stroke-width: 3; pointer-events: stroke; cursor: pointer; }
 .sliding-gate-pocket { stroke: #888; stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }

@@ -26,6 +26,7 @@ function initMap() {
   const gapCtrl = new window.FP.GapController(store);
   const gateCtrl = new window.FP.GateController(store, gapCtrl);
   const slidingGateCtrl = new window.FP.SlidingGateController(store, sm, history);
+  const postsCtrl = new window.FP.PostsController(store);
 
   window.FP.geo.bindMap(map);
 
@@ -39,9 +40,10 @@ function initMap() {
     snap,
     (pointAId, pointBId) => openLengthPopover(pointAId, pointBId),
     (runId, pointAId, pointBId, clickGeo) => handleGapClick(runId, pointAId, pointBId, clickGeo),
-    (runId, pointAId, pointBId, clickGeo) => handleGateLineClick(runId, pointAId, pointBId, clickGeo)
+    (runId, pointAId, pointBId, clickGeo) => handleGateLineClick(runId, pointAId, pointBId, clickGeo),
+    (runId, pointAId, pointBId, clickGeo) => handlePostLineClick(runId, pointAId, pointBId, clickGeo)
   );
-  const overlay = new window.FP.EditorOverlay(map, svgEl, store, sm, draw, selection, slidingGateCtrl);
+  const overlay = new window.FP.EditorOverlay(map, svgEl, store, sm, draw, selection, slidingGateCtrl, postsCtrl);
 
   function rerender() {
     try {
@@ -81,7 +83,7 @@ function initMap() {
     if (s.selectedPointId && !store.points.has(s.selectedPointId)) {
       s.selectedPointId = null;
     }
-    if (s.selectedObjectId && !store.gates.has(s.selectedObjectId)) {
+    if (s.selectedObjectId && !store.gates.has(s.selectedObjectId) && !store.posts.has(s.selectedObjectId)) {
       s.selectedObjectId = null;
     }
   }
@@ -179,7 +181,8 @@ function initMap() {
       state.activeTool === 'draw' ||
       state.activeTool === 'gap' ||
       state.activeTool === 'gate' ||
-      state.activeTool === 'slidingGate'
+      state.activeTool === 'slidingGate' ||
+      state.activeTool === 'posts'
     ) {
       map.dragging.disable();
     } else {
@@ -227,6 +230,33 @@ function initMap() {
     rerender();
   }
 
+  // 16.1/розділ 5: розміщення Additional post на існуючій лінії
+  function handlePostLineClick(runId, pointAId, pointBId, clickGeo) {
+    history.beginAction();
+    const result = postsCtrl.placeOnSegment(runId, pointAId, pointBId, clickGeo);
+    if (!result.success) {
+      history.cancelAction();
+      alert(result.message);
+      return;
+    }
+    history.commitAction();
+    sm.select({ objectId: result.postId });
+    rerender();
+  }
+
+  // PST-003: Show/Hide posts — перемикач видимості лише автоматичних LINE posts
+  const togglePostsBtn = document.getElementById('btn-toggle-posts');
+  function updateTogglePostsButton() {
+    togglePostsBtn.classList.toggle('active', sm.state.showAutoPosts);
+  }
+  togglePostsBtn.addEventListener('click', () => {
+    sm.togglePosts();
+    updateTogglePostsButton();
+    rerender();
+  });
+  sm.onChange(updateTogglePostsButton);
+  updateTogglePostsButton();
+
   // --- Keyboard wiring ---
   window.FP.bindKeyboard({
     sm,
@@ -249,7 +279,9 @@ function initMap() {
         closeLengthPopover();
       },
       togglePosts: () => {
-        /* TODO: PST-003, наступний крок */
+        sm.togglePosts();
+        updateTogglePostsButton();
+        rerender();
       },
       toggleJointLock: () => {
         // L: для вибраного стику — роз'єднати (розділ 9.3, розділ 20)
@@ -523,7 +555,7 @@ function initMap() {
     });
   });
 
-  window.__fp_debug = { map, store, sm, history, draw, overlay, selection, snap, jointCtrl, gapCtrl, gateCtrl, slidingGateCtrl };
+  window.__fp_debug = { map, store, sm, history, draw, overlay, selection, snap, jointCtrl, gapCtrl, gateCtrl, slidingGateCtrl, postsCtrl };
 }
 
 window.addEventListener('DOMContentLoaded', initMap);

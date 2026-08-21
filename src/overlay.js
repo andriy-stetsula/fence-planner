@@ -19,8 +19,9 @@ window.FP.EditorOverlay = class EditorOverlay {
    * @param {InstanceType<typeof window.FP.DrawController>} draw
    * @param {InstanceType<typeof window.FP.SelectionController>} [selection]
    * @param {InstanceType<typeof window.FP.SlidingGateController>} [slidingGate]
+   * @param {InstanceType<typeof window.FP.PostsController>} [posts]
    */
-  constructor(map, svgEl, store, sm, draw, selection = null, slidingGate = null) {
+  constructor(map, svgEl, store, sm, draw, selection = null, slidingGate = null, posts = null) {
     this.map = map;
     this.svg = svgEl;
     this.store = store;
@@ -28,9 +29,11 @@ window.FP.EditorOverlay = class EditorOverlay {
     this.draw = draw;
     this.selection = selection;
     this.slidingGate = slidingGate;
+    this.posts = posts;
 
-    // Шари, у порядку відображення (розділ 19.1: 3 паркан+ворота, 4 розміри, 5 вузли, 6 preview)
+    // Шари, у порядку відображення (розділ 19.1: 3 паркан+ворота+стовпи, 4 розміри, 5 вузли, 6 preview)
     this.gFence = this._makeGroup('layer-fence');
+    this.gPosts = this._makeGroup('layer-posts');
     this.gGates = this._makeGroup('layer-gates hit-layer');
     this.gDimensions = this._makeGroup('layer-dimensions');
     this.gNodes = this._makeGroup('layer-nodes hit-layer');
@@ -51,6 +54,7 @@ window.FP.EditorOverlay = class EditorOverlay {
   /** Повний перерендер SVG-шару з поточних даних стору + live-preview */
   render() {
     this._clear(this.gFence);
+    this._clear(this.gPosts);
     this._clear(this.gGates);
     this._clear(this.gDimensions);
     this._clear(this.gNodes);
@@ -58,6 +62,13 @@ window.FP.EditorOverlay = class EditorOverlay {
 
     for (const run of this.store.runs.values()) {
       this._renderRun(run);
+      if (this.posts) this._renderLinePosts(run);
+    }
+
+    if (this.posts) {
+      for (const post of this.store.posts.values()) {
+        this._renderAdditionalPost(post);
+      }
     }
 
     for (const gate of this.store.gates.values()) {
@@ -109,6 +120,48 @@ window.FP.EditorOverlay = class EditorOverlay {
       const nodeEl = this._node(screen, className);
       if (this.selection) this.selection.attachNodeHandlers(nodeEl, p.id, run.id);
     }
+  }
+
+  /**
+   * LINE posts — розділ 16.1/PST-001. Дрібні непретягувані крапки,
+   * перераховані наживо з довжини сегмента й модуля. PST-003: приховуються
+   * перемикачем Show/Hide posts, не впливаючи на самі вузли лінії.
+   */
+  _renderLinePosts(run) {
+    if (!this.sm.state.showAutoPosts) return;
+    const points = this.store.getRunPoints(run.id);
+    const positions = this.posts.computeLinePosts(run, points);
+    for (const geo of positions) {
+      const screen = window.FP.geo.toScreen(geo);
+      const el = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      el.setAttribute('x', screen.x - 2.5);
+      el.setAttribute('y', screen.y - 2.5);
+      el.setAttribute('width', 5);
+      el.setAttribute('height', 5);
+      el.setAttribute('class', 'post post-line');
+      // PST-001: не handle — свідомо без pointer-events і без selection-обробників.
+      this.gPosts.appendChild(el);
+    }
+  }
+
+  /**
+   * Additional post — розділ 16.1/розділ 5. Той самий розмір, що й END/CORNER
+   * (16.1 таблиця), вибирається і видаляється як звичайний об'єкт (8.1),
+   * але не є handle сегмента лінії.
+   */
+  _renderAdditionalPost(post) {
+    const geo = this.posts.getGeo(post);
+    if (!geo) return;
+    const screen = window.FP.geo.toScreen(geo);
+    const isSelected = this.sm.state.selectedObjectId === post.id;
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    el.setAttribute('x', screen.x - 4);
+    el.setAttribute('y', screen.y - 4);
+    el.setAttribute('width', 8);
+    el.setAttribute('height', 8);
+    el.setAttribute('class', isSelected ? 'post post-additional selected' : 'post post-additional');
+    this.gPosts.appendChild(el);
+    if (this.selection) this.selection.attachObjectHandlers(el, post.id);
   }
 
   /**

@@ -23,7 +23,7 @@ window.FP.SelectionController = class SelectionController {
    * @param {() => void} rerender
    * @param {InstanceType<typeof window.FP.SnapController>} [snap]
    */
-  constructor(store, sm, history, map, rerender, snap = null, onSegmentClick = null, onGapClick = null, onGateLineClick = null) {
+  constructor(store, sm, history, map, rerender, snap = null, onSegmentClick = null, onGapClick = null, onGateLineClick = null, onPostLineClick = null) {
     this.store = store;
     this.sm = sm;
     this.history = history;
@@ -33,6 +33,7 @@ window.FP.SelectionController = class SelectionController {
     this.onSegmentClick = onSegmentClick;
     this.onGapClick = onGapClick;
     this.onGateLineClick = onGateLineClick;
+    this.onPostLineClick = onPostLineClick;
 
     this.DRAG_THRESHOLD_PX = 5; // PTR-001
 
@@ -52,7 +53,7 @@ window.FP.SelectionController = class SelectionController {
 
   isLineInteractive() {
     const tool = this.sm.state.activeTool;
-    return tool === 'select' || tool === 'gap' || tool === 'gate';
+    return tool === 'select' || tool === 'gap' || tool === 'gate' || tool === 'posts';
   }
 
   /** Клік по об'єкту (ворота) — вибирає його (SEL, 13). Викликається з overlay.js. */
@@ -119,11 +120,12 @@ window.FP.SelectionController = class SelectionController {
       return; // PTR-001: ще звичайний клік, не drag
     }
 
-    const isClickOnlyTool = this.sm.state.activeTool === 'gap' || this.sm.state.activeTool === 'gate';
+    const isClickOnlyTool =
+      this.sm.state.activeTool === 'gap' || this.sm.state.activeTool === 'gate' || this.sm.state.activeTool === 'posts';
 
     if (!this.session.moved) {
       // Перший кадр справжнього drag — почати транзакцію історії (HIS-001/HIS-002)
-      // У режимах gap/gate ми не рухаємо геометрію взагалі — лише клік має значення.
+      // У режимах gap/gate/posts ми не рухаємо геометрію взагалі — лише клік має значення.
       if (!isClickOnlyTool) {
         this.history.beginAction();
         this.sm.startDrag({ targetType: this.session.type, targetId: this.session.id });
@@ -179,7 +181,8 @@ window.FP.SelectionController = class SelectionController {
 
     if (!this.session) return;
 
-    const isClickOnlyTool = this.sm.state.activeTool === 'gap' || this.sm.state.activeTool === 'gate';
+    const isClickOnlyTool =
+      this.sm.state.activeTool === 'gap' || this.sm.state.activeTool === 'gate' || this.sm.state.activeTool === 'posts';
 
     if (this.session.moved) {
       // Реальний drag завершено (лише коли рух геометрії взагалі дозволений)
@@ -207,6 +210,16 @@ window.FP.SelectionController = class SelectionController {
       // Клік по сегменту в режимі Swing gates — ставимо ворота в проєм (13.1)
       if (this.session.segmentInfo && this.onGateLineClick) {
         this.onGateLineClick(
+          this.session.runId,
+          this.session.segmentInfo.pointAId,
+          this.session.segmentInfo.pointBId,
+          this.session.segmentInfo.clickGeo
+        );
+      }
+    } else if (this.sm.state.activeTool === 'posts') {
+      // Клік по сегменту в режимі Additional posts — ставимо додатковий стовп (16.1)
+      if (this.session.segmentInfo && this.onPostLineClick) {
+        this.onPostLineClick(
           this.session.runId,
           this.session.segmentInfo.pointAId,
           this.session.segmentInfo.pointBId,
@@ -242,9 +255,13 @@ window.FP.SelectionController = class SelectionController {
     if (s.selectedPointId) {
       this.store.removePoint(s.selectedPointId);
     } else if (s.selectedObjectId) {
-      // Вибрано об'єкт (ворота): 8.1 — видалити об'єкт, магнітна прив'язка
-      // знімається без помилки (проєм у лінії лишається, як звичайний Fence gap).
-      this.store.removeGate(s.selectedObjectId);
+      // Вибрано об'єкт (ворота або Additional post): 8.1 — видалити об'єкт,
+      // магнітна прив'язка знімається без помилки.
+      if (this.store.gates.has(s.selectedObjectId)) {
+        this.store.removeGate(s.selectedObjectId);
+      } else if (this.store.posts.has(s.selectedObjectId)) {
+        this.store.removePost(s.selectedObjectId);
+      }
     } else if (s.selectedRunId) {
       this.store.removeRun(s.selectedRunId);
     }

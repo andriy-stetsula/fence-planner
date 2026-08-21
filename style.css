@@ -90,6 +90,28 @@ html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
   stroke-width: 3px;
 }
 .dimension-label.preview { fill: #2f6bff; }
+.dimension-label.gate-dimension { fill: #a85c00; }
+
+/* --- Ворота, розділ 13.2 ТЗ --- */
+.gate-post { fill: #444; stroke: #222; stroke-width: 1; pointer-events: all; cursor: pointer; }
+.gate-leaf { stroke: #2f6bff; stroke-width: 3; pointer-events: stroke; cursor: pointer; }
+.gate-arc { fill: none; stroke: #999; stroke-width: 1; stroke-dasharray: 3 3; pointer-events: none; }
+.gate.selected .gate-leaf { stroke: #1a3fa8; stroke-width: 4; }
+.gate.selected .gate-post { fill: #1a3fa8; }
+
+.gate-popover button {
+  width: 34px;
+  height: 34px;
+  min-width: 42px;
+  min-height: 42px;
+  font-size: 16px;
+  line-height: 1;
+  background: #f3f3f3;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.gate-popover button.active { background: #ffe066; border-color: #d9a300; }
 
 /* status message zone, UI-001 */
 #system-message {

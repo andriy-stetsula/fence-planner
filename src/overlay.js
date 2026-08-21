@@ -27,8 +27,9 @@ window.FP.EditorOverlay = class EditorOverlay {
     this.draw = draw;
     this.selection = selection;
 
-    // Шари, у порядку відображення (розділ 19.1: 3 паркан, 4 розміри, 5 вузли, 6 preview)
+    // Шари, у порядку відображення (розділ 19.1: 3 паркан+ворота, 4 розміри, 5 вузли, 6 preview)
     this.gFence = this._makeGroup('layer-fence');
+    this.gGates = this._makeGroup('layer-gates hit-layer');
     this.gDimensions = this._makeGroup('layer-dimensions');
     this.gNodes = this._makeGroup('layer-nodes hit-layer');
     this.gPreview = this._makeGroup('layer-preview');
@@ -48,12 +49,17 @@ window.FP.EditorOverlay = class EditorOverlay {
   /** Повний перерендер SVG-шару з поточних даних стору + live-preview */
   render() {
     this._clear(this.gFence);
+    this._clear(this.gGates);
     this._clear(this.gDimensions);
     this._clear(this.gNodes);
     this._clear(this.gPreview);
 
     for (const run of this.store.runs.values()) {
       this._renderRun(run);
+    }
+
+    for (const gate of this.store.gates.values()) {
+      this._renderGate(gate);
     }
 
     if (this.draw.isDrafting() && this.draw.livePreviewGeo) {
@@ -98,6 +104,75 @@ window.FP.EditorOverlay = class EditorOverlay {
     }
   }
 
+  /**
+   * Розпашні ворота — розділ 13.2 ТЗ.
+   * дві стійки по краях проєму; одна стулка; тонка дуга відкривання;
+   * окрема розмірна лінія ширини (GAT-001/DIM-006); підпис не перевертається
+   * (DIM-004 діє й тут).
+   */
+  _renderGate(gate) {
+    const a = window.FP.geo.toScreen(gate.postAGeo);
+    const b = window.FP.geo.toScreen(gate.postBGeo);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dist = Math.hypot(dx, dy) || 1e-6;
+    const ux = dx / dist;
+    const uy = dy / dist;
+    // перпендикуляр: 'right' — за годинниковою від напрямку A->B
+    const px = -uy;
+    const py = ux;
+
+    const isSelected = this.sm.state.selectedObjectId === gate.id;
+    const hingePost = gate.hingeSide === 'A' ? a : b;
+    const otherPost = gate.hingeSide === 'A' ? b : a;
+    const swingSign = gate.swingSide === 'right' ? 1 : -1;
+
+    const leafEnd = {
+      x: hingePost.x + px * swingSign * dist,
+      y: hingePost.y + py * swingSign * dist,
+    };
+    const closedEnd = otherPost; // напрямок "закрито" — вздовж лінії, до іншої стійки
+
+    const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    group.setAttribute('class', isSelected ? 'gate selected' : 'gate');
+
+    // дуга відкривання (тонка, від закритого положення до відкритого)
+    const arcPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    const sweepFlag = swingSign > 0 ? 1 : 0;
+    arcPath.setAttribute(
+      'd',
+      `M ${closedEnd.x} ${closedEnd.y} A ${dist} ${dist} 0 0 ${sweepFlag} ${leafEnd.x} ${leafEnd.y}`
+    );
+    arcPath.setAttribute('class', 'gate-arc');
+    group.appendChild(arcPath);
+
+    // стулка — від стійки петель до відкритого положення
+    const leaf = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    leaf.setAttribute('x1', hingePost.x);
+    leaf.setAttribute('y1', hingePost.y);
+    leaf.setAttribute('x2', leafEnd.x);
+    leaf.setAttribute('y2', leafEnd.y);
+    leaf.setAttribute('class', 'gate-leaf');
+    group.appendChild(leaf);
+
+    // дві стійки (GAT-001)
+    for (const post of [a, b]) {
+      const postEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      postEl.setAttribute('x', post.x - 4);
+      postEl.setAttribute('y', post.y - 4);
+      postEl.setAttribute('width', 8);
+      postEl.setAttribute('height', 8);
+      postEl.setAttribute('class', 'gate-post');
+      group.appendChild(postEl);
+    }
+
+    this.gGates.appendChild(group);
+    if (this.selection) this.selection.attachObjectHandlers(group, gate.id);
+
+    // GAT-002/DIM-006: окремий розмір ширини між стійками, не замінює розмір прольоту
+    this._dimensionLabel(a, b, gate.widthM, false, 'gate-dimension');
+  }
+
   _renderLivePreview() {
     const preview = this.draw.onPointerMove(this.draw.livePreviewGeo);
     if (!preview) return;
@@ -140,7 +215,7 @@ window.FP.EditorOverlay = class EditorOverlay {
   }
 
   /** DIM-005: метри з одним десятковим знаком. DIM-004: текст ніколи не догори ногами. */
-  _dimensionLabel(a, b, lengthMeters, isPreview = false) {
+  _dimensionLabel(a, b, lengthMeters, isPreview = false, extraClass = '') {
     const midX = (a.x + b.x) / 2;
     const midY = (a.y + b.y) / 2;
     let angleDeg = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
@@ -150,7 +225,7 @@ window.FP.EditorOverlay = class EditorOverlay {
     text.setAttribute('x', midX);
     text.setAttribute('y', midY - 8);
     text.setAttribute('transform', `rotate(${angleDeg} ${midX} ${midY - 8})`);
-    text.setAttribute('class', isPreview ? 'dimension-label preview' : 'dimension-label');
+    text.setAttribute('class', `${isPreview ? 'dimension-label preview' : 'dimension-label'} ${extraClass}`.trim());
     text.textContent = `${lengthMeters.toFixed(1)} m`;
     (isPreview ? this.gPreview : this.gDimensions).appendChild(text);
   }

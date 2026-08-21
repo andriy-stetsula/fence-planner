@@ -62,6 +62,30 @@ class Joint {
 }
 
 /**
+ * Gate — розпашні ворота/хвіртка, розділ 13 ТЗ.
+ * postAGeo/postBGeo — дві структурні стійки (GAT-001: точна ширина в метрах).
+ * hingeSide: 'A' | 'B' — на якій стійці петлі (стрілки ←/→, 13.3).
+ * swingSide: 'left' | 'right' — у який бік від лінії відкривається стулка
+ * (стрілки ↑/↓, 13.3). 'right' — за напрямком A->B, стулка повертає праворуч.
+ * attachedRunBeforeId/attachedRunAfterId — прогони по обидва боки проєму,
+ * якщо ворота стоять на лінії (13.1); null для standalone-об'єкта.
+ * GAT-004: замка немає — стан видно за вирівнюванням з лінією.
+ */
+class Gate {
+  constructor({ postAGeo, postBGeo, widthM, attachedRunBeforeId = null, attachedRunAfterId = null }) {
+    this.id = nextId('gate');
+    this.type = 'swing';
+    this.postAGeo = postAGeo;
+    this.postBGeo = postBGeo;
+    this.widthM = widthM;
+    this.hingeSide = 'A';
+    this.swingSide = 'right';
+    this.attachedRunBeforeId = attachedRunBeforeId;
+    this.attachedRunAfterId = attachedRunAfterId;
+  }
+}
+
+/**
  * Editor state — єдине джерело правди про поточний стан UI.
  * Розділ 4 ТЗ: явний стан, щоб один клік не робив кілька речей одразу.
  */
@@ -92,6 +116,18 @@ class DataStore {
     this.points = new Map();
     /** @type {Map<string, Joint>} */
     this.joints = new Map();
+    /** @type {Map<string, Gate>} */
+    this.gates = new Map();
+  }
+
+  createGate(gateProps) {
+    const gate = new Gate(gateProps);
+    this.gates.set(gate.id, gate);
+    return gate;
+  }
+
+  removeGate(gateId) {
+    this.gates.delete(gateId);
   }
 
   createRun() {
@@ -172,6 +208,9 @@ class DataStore {
       joints: new Map(
         Array.from(this.joints.entries()).map(([k, v]) => [k, { ...v, memberPointIds: [...v.memberPointIds] }])
       ),
+      gates: new Map(
+        Array.from(this.gates.entries()).map(([k, v]) => [k, { ...v }])
+      ),
     };
   }
 
@@ -179,9 +218,10 @@ class DataStore {
     this.runs = snapshot.runs;
     this.points = snapshot.points;
     this.joints = snapshot.joints;
+    this.gates = snapshot.gates || new Map();
   }
 }
 
 // експорт у глобальний неймспейс (проєкт без бандлера для простоти старту)
 window.FP = window.FP || {};
-window.FP.model = { Point, Run, Joint, EditorState, DataStore, nextId };
+window.FP.model = { Point, Run, Joint, Gate, EditorState, DataStore, nextId };

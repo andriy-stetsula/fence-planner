@@ -14,6 +14,8 @@
     <button data-tool="draw" class="tool-btn" title="D">Draw a fence line</button>
     <button data-tool="gap" class="tool-btn" title="Fence gap">Fence gap</button>
     <input id="gap-width-input" type="number" step="0.1" min="0.1" value="1.0" style="width:56px" title="Ширина розриву, м" />
+    <button data-tool="gate" class="tool-btn" title="Swing gates">Swing gates</button>
+    <input id="gate-width-input" type="number" step="0.1" min="0.1" value="1.2" style="width:56px" title="Ширина воріт, м" />
     <button id="btn-new-run" title="N">New run</button>
     <button id="btn-undo" title="Ctrl+Z">Undo</button>
     <button id="btn-redo" title="Ctrl+Shift+Z">Redo</button>
@@ -41,6 +43,13 @@
       <button id="joint-angle-apply">✓</button>
       <button id="joint-close">✕</button>
     </div>
+    <!-- gate arrow controls: only ← → ↑ ↓, no text labels (13.3) -->
+    <div id="gate-popover" class="popover gate-popover" hidden>
+      <button data-gate-action="hinge-a" title="Петлі: стійка A">←</button>
+      <button data-gate-action="hinge-b" title="Петлі: стійка B">→</button>
+      <button data-gate-action="swing-left" title="Відкриття: ліворуч">↑</button>
+      <button data-gate-action="swing-right" title="Відкриття: праворуч">↓</button>
+    </div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -52,6 +61,7 @@
   <script src="src/snap.js"></script>
   <script src="src/joint.js"></script>
   <script src="src/gap.js"></script>
+  <script src="src/gate.js"></script>
   <script src="src/select.js"></script>
   <script src="src/overlay.js"></script>
   <script src="src/keyboard.js"></script>

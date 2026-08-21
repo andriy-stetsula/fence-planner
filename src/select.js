@@ -23,7 +23,7 @@ window.FP.SelectionController = class SelectionController {
    * @param {() => void} rerender
    * @param {InstanceType<typeof window.FP.SnapController>} [snap]
    */
-  constructor(store, sm, history, map, rerender, snap = null, onSegmentClick = null, onGapClick = null) {
+  constructor(store, sm, history, map, rerender, snap = null, onSegmentClick = null, onGapClick = null, onGateLineClick = null) {
     this.store = store;
     this.sm = sm;
     this.history = history;
@@ -32,6 +32,7 @@ window.FP.SelectionController = class SelectionController {
     this.snap = snap;
     this.onSegmentClick = onSegmentClick;
     this.onGapClick = onGapClick;
+    this.onGateLineClick = onGateLineClick;
 
     this.DRAG_THRESHOLD_PX = 5; // PTR-001
 
@@ -50,7 +51,19 @@ window.FP.SelectionController = class SelectionController {
   }
 
   isLineInteractive() {
-    return this.sm.state.activeTool === 'select' || this.sm.state.activeTool === 'gap';
+    const tool = this.sm.state.activeTool;
+    return tool === 'select' || tool === 'gap' || tool === 'gate';
+  }
+
+  /** Клік по об'єкту (ворота) — вибирає його (SEL, 13). Викликається з overlay.js. */
+  attachObjectHandlers(el, objectId) {
+    if (!this.isActive()) return;
+    el.style.pointerEvents = 'all';
+    el.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+      this.sm.select({ objectId });
+      this.rerender();
+    });
   }
 
   /** Викликається з overlay.js при рендері кожної лінії прогону */
@@ -106,18 +119,20 @@ window.FP.SelectionController = class SelectionController {
       return; // PTR-001: ще звичайний клік, не drag
     }
 
+    const isClickOnlyTool = this.sm.state.activeTool === 'gap' || this.sm.state.activeTool === 'gate';
+
     if (!this.session.moved) {
       // Перший кадр справжнього drag — почати транзакцію історії (HIS-001/HIS-002)
-      // У режимі gap ми не рухаємо геометрію взагалі — лише клік має значення.
-      if (this.sm.state.activeTool !== 'gap') {
+      // У режимах gap/gate ми не рухаємо геометрію взагалі — лише клік має значення.
+      if (!isClickOnlyTool) {
         this.history.beginAction();
         this.sm.startDrag({ targetType: this.session.type, targetId: this.session.id });
       }
     }
     this.session.moved = true;
 
-    if (this.sm.state.activeTool === 'gap') {
-      return; // ігноруємо рух геометрії в режимі Fence gap
+    if (isClickOnlyTool) {
+      return; // ігноруємо рух геометрії в режимі Fence gap / Swing gates
     }
 
     const mapContainerPoint = this.map.mouseEventToContainerPoint(e);
@@ -164,9 +179,11 @@ window.FP.SelectionController = class SelectionController {
 
     if (!this.session) return;
 
+    const isClickOnlyTool = this.sm.state.activeTool === 'gap' || this.sm.state.activeTool === 'gate';
+
     if (this.session.moved) {
-      // Реальний drag завершено (лише для tool !== 'gap', там ми взагалі ігноруємо рух)
-      if (this.sm.state.activeTool !== 'gap') {
+      // Реальний drag завершено (лише коли рух геометрії взагалі дозволений)
+      if (!isClickOnlyTool) {
         // SNP-003: якщо під час перетягування вільного кінця ціль ще в радіусі —
         // створюємо реальний зв'язок саме тут, на відпусканні.
         if (this.session.type === 'point' && this.activeSnapCandidate && this.snap) {
@@ -180,6 +197,16 @@ window.FP.SelectionController = class SelectionController {
       // Клік по сегменту в режимі Fence gap — саме те, що нам треба
       if (this.session.segmentInfo && this.onGapClick) {
         this.onGapClick(
+          this.session.runId,
+          this.session.segmentInfo.pointAId,
+          this.session.segmentInfo.pointBId,
+          this.session.segmentInfo.clickGeo
+        );
+      }
+    } else if (this.sm.state.activeTool === 'gate') {
+      // Клік по сегменту в режимі Swing gates — ставимо ворота в проєм (13.1)
+      if (this.session.segmentInfo && this.onGateLineClick) {
+        this.onGateLineClick(
           this.session.runId,
           this.session.segmentInfo.pointAId,
           this.session.segmentInfo.pointBId,
@@ -209,11 +236,15 @@ window.FP.SelectionController = class SelectionController {
    */
   deleteSelected() {
     const s = this.sm.state;
-    if (!s.selectedPointId && !s.selectedRunId) return;
+    if (!s.selectedPointId && !s.selectedRunId && !s.selectedObjectId) return;
 
     this.history.beginAction();
     if (s.selectedPointId) {
       this.store.removePoint(s.selectedPointId);
+    } else if (s.selectedObjectId) {
+      // Вибрано об'єкт (ворота): 8.1 — видалити об'єкт, магнітна прив'язка
+      // знімається без помилки (проєм у лінії лишається, як звичайний Fence gap).
+      this.store.removeGate(s.selectedObjectId);
     } else if (s.selectedRunId) {
       this.store.removeRun(s.selectedRunId);
     }

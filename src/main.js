@@ -24,6 +24,7 @@ function initMap() {
   const snap = new window.FP.SnapController(store);
   const jointCtrl = new window.FP.JointController(store);
   const gapCtrl = new window.FP.GapController(store);
+  const gateCtrl = new window.FP.GateController(store, gapCtrl);
 
   window.FP.geo.bindMap(map);
 
@@ -36,7 +37,8 @@ function initMap() {
     () => rerender(),
     snap,
     (pointAId, pointBId) => openLengthPopover(pointAId, pointBId),
-    (runId, pointAId, pointBId, clickGeo) => handleGapClick(runId, pointAId, pointBId, clickGeo)
+    (runId, pointAId, pointBId, clickGeo) => handleGapClick(runId, pointAId, pointBId, clickGeo),
+    (runId, pointAId, pointBId, clickGeo) => handleGateLineClick(runId, pointAId, pointBId, clickGeo)
   );
   const overlay = new window.FP.EditorOverlay(map, svgEl, store, sm, draw, selection);
 
@@ -45,6 +47,7 @@ function initMap() {
       overlay.render();
       updateStatusText();
       updateJointPopover();
+      updateGatePopover();
     } catch (err) {
       console.error('Editor render failed:', err);
     }
@@ -75,6 +78,9 @@ function initMap() {
     }
     if (s.selectedPointId && !store.points.has(s.selectedPointId)) {
       s.selectedPointId = null;
+    }
+    if (s.selectedObjectId && !store.gates.has(s.selectedObjectId)) {
+      s.selectedObjectId = null;
     }
   }
 
@@ -147,7 +153,7 @@ function initMap() {
   // Коли активний інструмент "draw" або "gap" — тимчасово вимикаємо перетягування карти,
   // щоб клік по карті не одночасно і панорамував, і малював/різав (PTR-003).
   sm.onChange((state) => {
-    if (state.activeTool === 'draw' || state.activeTool === 'gap') {
+    if (state.activeTool === 'draw' || state.activeTool === 'gap' || state.activeTool === 'gate') {
       map.dragging.disable();
     } else {
       map.dragging.enable();
@@ -170,6 +176,27 @@ function initMap() {
       return;
     }
     history.commitAction();
+    rerender();
+  }
+
+  // 13.1: розміщення розпашних воріт на існуючій лінії
+  function handleGateLineClick(runId, pointAId, pointBId, clickGeo) {
+    const widthInput = document.getElementById('gate-width-input');
+    const widthMeters = parseFloat(widthInput.value);
+    if (Number.isNaN(widthMeters) || widthMeters <= 0) {
+      alert('Вкажіть коректну ширину воріт (> 0 м)');
+      return;
+    }
+
+    history.beginAction();
+    const result = gateCtrl.placeOnLine(runId, pointAId, pointBId, clickGeo, widthMeters);
+    if (!result.success) {
+      history.cancelAction();
+      alert(result.message);
+      return;
+    }
+    history.commitAction();
+    sm.select({ objectId: result.gateId });
     rerender();
   }
 
@@ -370,7 +397,62 @@ function initMap() {
     rerender();
   });
 
-  window.__fp_debug = { map, store, sm, history, draw, overlay, selection, snap, jointCtrl, gapCtrl };
+  // --- Контекстна панель воріт: стрілки керування (розділ 13.3) ---
+  // Без текстових підписів — лише ← → ↑ ↓. ← → міняють сторону петель
+  // вздовж лінії (стійка A/B). ↑ ↓ міняють сторону відкриття поперек лінії.
+  const gatePopover = document.getElementById('gate-popover');
+  const gateArrowButtons = gatePopover.querySelectorAll('button[data-gate-action]');
+
+  function updateGatePopover() {
+    const gateId = sm.state.selectedObjectId;
+    if (!gateId) {
+      gatePopover.hidden = true;
+      return;
+    }
+    const gate = store.gates.get(gateId);
+    if (!gate) {
+      gatePopover.hidden = true;
+      return;
+    }
+
+    gateArrowButtons.forEach((btn) => {
+      const action = btn.dataset.gateAction;
+      const isActive =
+        (action === 'hinge-a' && gate.hingeSide === 'A') ||
+        (action === 'hinge-b' && gate.hingeSide === 'B') ||
+        (action === 'swing-left' && gate.swingSide === 'left') ||
+        (action === 'swing-right' && gate.swingSide === 'right');
+      btn.classList.toggle('active', isActive);
+    });
+
+    const a = window.FP.geo.toScreen(gate.postAGeo);
+    const b = window.FP.geo.toScreen(gate.postBGeo);
+    const mapWrap = document.getElementById('map-wrap').getBoundingClientRect();
+    let left = (a.x + b.x) / 2;
+    let top = Math.min(a.y, b.y) - 56;
+    left = Math.max(8, Math.min(left, mapWrap.width - 140));
+    top = Math.max(8, top);
+    gatePopover.style.left = `${left}px`;
+    gatePopover.style.top = `${top}px`;
+    gatePopover.hidden = false;
+  }
+
+  gateArrowButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const gateId = sm.state.selectedObjectId;
+      if (!gateId) return;
+      const action = btn.dataset.gateAction;
+      history.beginAction();
+      if (action === 'hinge-a') gateCtrl.setHingeSide(gateId, 'A');
+      if (action === 'hinge-b') gateCtrl.setHingeSide(gateId, 'B');
+      if (action === 'swing-left') gateCtrl.setSwingSide(gateId, 'left');
+      if (action === 'swing-right') gateCtrl.setSwingSide(gateId, 'right');
+      history.commitAction();
+      rerender();
+    });
+  });
+
+  window.__fp_debug = { map, store, sm, history, draw, overlay, selection, snap, jointCtrl, gapCtrl, gateCtrl };
 }
 
 window.addEventListener('DOMContentLoaded', initMap);

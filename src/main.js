@@ -283,7 +283,19 @@ function initMap() {
         updateTogglePostsButton();
         rerender();
       },
-      toggleJointLock: () => handleToggleLock(),
+      toggleJointLock: () => {
+        // L: для вибраного стику — роз'єднати (розділ 9.3, розділ 20)
+        const s = sm.state;
+        if (s.selectedPointId) {
+          const point = store.points.get(s.selectedPointId);
+          if (point && point.jointId) {
+            history.beginAction();
+            snap.unlockJoint(point.jointId);
+            history.commitAction();
+            rerender();
+          }
+        }
+      },
       onDelete: () => {
         selection.deleteSelected();
       },
@@ -389,60 +401,27 @@ function initMap() {
     }
   });
 
-  // --- Контекстна панель стику: замок, 90°, точний кут (розділ 10 JNT-002; 9.3; LOOP-003) ---
+  // --- Контекстна панель кута (розділ 10, JNT-002) ---
   const jointPopover = document.getElementById('joint-popover');
   const jointAngleInput = document.getElementById('joint-angle-input');
-  const jointLockBtn = document.getElementById('joint-lock');
-  const joint90Btn = document.getElementById('joint-90');
-  const jointAngleApplyBtn = document.getElementById('joint-angle-apply');
 
-  /**
-   * Панель стику показується у двох випадках:
-   * 1. Вибраний вузол з'єднаний (jointId) з іншим прогоном (endpoint-to-endpoint
-   *    або T-стик, SNP-004) — лише кнопка замка (9.3), 90°/кут не рахуємо для
-   *    міжпрогінного з'єднання.
-   * 2. Вибраний "простий" внутрішній кут одного прогону, ВКЛЮЧНО з кутом
-   *    замкненого контуру (LOOP-003) — замок відкриває контур, плюс 90°/кут.
-   */
   function updateJointPopover() {
     const pointId = sm.state.selectedPointId;
     if (!pointId) {
       jointPopover.hidden = true;
       return;
     }
-    const point = store.points.get(pointId);
-    if (!point) {
-      jointPopover.hidden = true;
-      return;
-    }
-    const run = store.runs.get(point.runId);
-    const isCrossJoint = !!point.jointId;
-    const isLoopCorner = !!(run && run.closed);
-    const corner = jointCtrl.getSimpleCorner(pointId); // null для isCrossJoint (за дизайном)
-
-    if (!isCrossJoint && !corner) {
-      // Ні з'єднаний стик, ні внутрішній кут (вільний кінець без зв'язку) — нічого показувати
+    const corner = jointCtrl.getSimpleCorner(pointId);
+    if (!corner) {
+      // JNT-006: більше двох гілок, або з'єднаний з іншим прогоном — панель кута не показуємо
       jointPopover.hidden = true;
       return;
     }
 
-    jointLockBtn.hidden = false; // показуємо завжди коли панель видима (JNT-002)
-    jointLockBtn.textContent = isCrossJoint || isLoopCorner ? '🔒' : '🔓';
-    jointLockBtn.disabled = !isCrossJoint && !isLoopCorner; // немає що розривати для звичайного кута
+    const angle = jointCtrl.getAngleDeg(pointId);
+    jointAngleInput.value = Math.round(angle);
 
-    // JNT-006 дух правила: 90°/точний кут лише для простого 2-гілкового кута,
-    // не для міжпрогінного з'єднання (там ще немає reference/moving branch)
-    const showAngle = !!corner && !isCrossJoint;
-    joint90Btn.hidden = !showAngle;
-    jointAngleInput.hidden = !showAngle;
-    jointAngleApplyBtn.hidden = !showAngle;
-
-    if (showAngle) {
-      const angle = jointCtrl.getAngleDeg(pointId);
-      jointAngleInput.value = Math.round(angle);
-    }
-
-    const screen = window.FP.geo.toScreen(point.geographicPosition);
+    const screen = window.FP.geo.toScreen(corner.point.geographicPosition);
     const mapWrap = document.getElementById('map-wrap').getBoundingClientRect();
     let left = screen.x + 16;
     let top = screen.y - 20;
@@ -452,36 +431,6 @@ function initMap() {
     jointPopover.style.top = `${top}px`;
     jointPopover.hidden = false;
   }
-
-  /**
-   * Кнопка замка / клавіша L (розділ 20):
-   * - вибраний з'єднаний стик (jointId) -> роз'єднати (9.3)
-   * - вибраний кут ЗАМКНЕНОГО контуру -> відкрити контур у цьому куті (LOOP-003)
-   * В обох випадках стара ціль тимчасово блокується від резнапу (9.3/LOOP-004).
-   */
-  function handleToggleLock() {
-    const pointId = sm.state.selectedPointId;
-    if (!pointId) return;
-    const point = store.points.get(pointId);
-    if (!point) return;
-    const run = store.runs.get(point.runId);
-
-    if (point.jointId) {
-      history.beginAction();
-      snap.unlockJoint(point.jointId);
-      history.commitAction();
-      rerender();
-    } else if (run && run.closed) {
-      history.beginAction();
-      const result = store.openRunAt(run.id, pointId);
-      if (result) snap.blockAfterSeparation([result.firstId, result.lastId]);
-      history.commitAction();
-      sm.clearSelection();
-      rerender();
-    }
-  }
-
-  jointLockBtn.addEventListener('click', handleToggleLock);
 
   document.getElementById('joint-90').addEventListener('click', () => {
     const pointId = sm.state.selectedPointId;

@@ -244,54 +244,8 @@ class DataStore {
         post.t = null;
       }
     }
-    for (const pid of run.pointIds) {
-      const point = this.points.get(pid);
-      if (point) this._cleanupPointJoint(point);
-      this.points.delete(pid);
-    }
+    for (const pid of run.pointIds) this.points.delete(pid);
     this.runs.delete(runId);
-  }
-
-  /**
-   * LOOP-001/002 (розділ 11): замкнути прогін — протилежний вільний кінець
-   * "зливається" з тим, який зараз тягнули (draggedPointId), без дублюючої
-   * точки. pointIds лишається як цикл: рендер/логіка з'єднують останню
-   * точку з першою, коли run.closed === true.
-   */
-  closeRun(runId, draggedPointId) {
-    const run = this.runs.get(runId);
-    if (!run) return false;
-    if (run.pointIds.length < 3) return false;
-    const idx = run.pointIds.indexOf(draggedPointId);
-    if (idx !== 0 && idx !== run.pointIds.length - 1) return false;
-    run.pointIds.splice(idx, 1);
-    this.points.delete(draggedPointId);
-    run.closed = true;
-    return true;
-  }
-
-  /**
-   * LOOP-003/004: відкрити замкнений контур у вибраному куті. Вузол
-   * роздвоюється на дві незалежні точки в тій самій geo-позиції — нові
-   * перший і останній вільні кінці відкритого прогону.
-   * @returns {{firstId: string, lastId: string} | null}
-   */
-  openRunAt(runId, pointId) {
-    const run = this.runs.get(runId);
-    if (!run || !run.closed) return null;
-    const idx = run.pointIds.indexOf(pointId);
-    if (idx === -1) return null;
-
-    const rotated = run.pointIds.slice(idx).concat(run.pointIds.slice(0, idx));
-    const original = this.points.get(pointId);
-    if (!original) return null;
-
-    const duplicate = new Point({ ...original.geographicPosition }, runId);
-    this.points.set(duplicate.id, duplicate);
-
-    run.pointIds = rotated.concat([duplicate.id]);
-    run.closed = false;
-    return { firstId: rotated[0], lastId: duplicate.id };
   }
 
   /**
@@ -303,36 +257,13 @@ class DataStore {
   removePoint(pointId) {
     const point = this.points.get(pointId);
     if (!point) return;
-    this._cleanupPointJoint(point);
     const run = this.runs.get(point.runId);
     if (!run) return;
     run.pointIds = run.pointIds.filter((id) => id !== pointId);
     this.points.delete(pointId);
-    if (run.pointIds.length < 2 && !run.closed) {
+    if (run.pointIds.length < 2) {
       this.removeRun(run.id);
     }
-  }
-
-  /**
-   * Розділ 22 "Видалено ціль зв'язку": знімає посилання на видалену точку
-   * з іншої сторони Joint-у (endpoint-to-endpoint або T-стик, SNP-004) —
-   * партнер лишається вільним кінцем у своїй останній коректній позиції.
-   */
-  _cleanupPointJoint(point) {
-    if (!point.jointId) return;
-    const joint = this.joints.get(point.jointId);
-    if (joint) {
-      for (const pid of joint.memberPointIds) {
-        if (pid === point.id) continue;
-        const other = this.points.get(pid);
-        if (other) {
-          other.jointId = null;
-          other.linkedRunId = null;
-          other.linkedPointId = null;
-        }
-      }
-    }
-    this.joints.delete(point.jointId);
   }
 
   /** Зсунути всі точки прогону на geo-дельту (розділ 12, MOV-001) */

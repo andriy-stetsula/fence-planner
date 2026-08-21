@@ -157,12 +157,11 @@ window.FP.SelectionController = class SelectionController {
     this.store.movePoint(pointId, newGeo);
 
     // SNP-001/9.4: під час перетягування вільного кінця шукаємо найближчу ціль
-    // прилипання (endpoint/node/segment/loop — лише preview, реальний зв'язок
-    // створюється на pointerup, SNP-003).
+    // прилипання (лише preview, реальний зв'язок — на pointerup, SNP-003).
     if (this.snap) {
       const point = this.store.points.get(pointId);
       if (!point.jointId) {
-        this.activeSnapCandidate = this.snap.findSnapTarget(pointId, newGeo);
+        this.activeSnapCandidate = this.snap.findEndpointSnapTarget(pointId, newGeo);
       }
     }
   }
@@ -189,20 +188,11 @@ window.FP.SelectionController = class SelectionController {
       // Реальний drag завершено (лише коли рух геометрії взагалі дозволений)
       if (!isClickOnlyTool) {
         // SNP-003: якщо під час перетягування вільного кінця ціль ще в радіусі —
-        // створюємо реальний зв'язок саме тут, на відпусканні. Тип дії залежить
-        // від виду кандидата, знайденого snap.findSnapTarget (розділ 9, 11).
+        // створюємо реальний зв'язок саме тут, на відпусканні.
         if (this.session.type === 'point' && this.activeSnapCandidate && this.snap) {
-          const candidate = this.activeSnapCandidate;
-          if (candidate.kind === 'loop') {
-            this.snap.closeLoop(this.session.id, candidate.runId); // LOOP-001/002
-          } else if (candidate.kind === 'segment') {
-            this.snap.createTJoint(this.session.id, candidate); // SNP-004: T-стик
-          } else {
-            this.snap.createJoint(this.session.id, candidate.pointId); // endpoint | node
-          }
+          this.snap.createJoint(this.session.id, this.activeSnapCandidate.pointId);
         }
         this.activeSnapCandidate = null;
-        if (this.snap) this.snap.clearBlock(); // 9.3/LOOP-004: блок діє лише в межах цієї drag-сесії
         this.history.commitAction();
         this.sm.endDrag();
       }

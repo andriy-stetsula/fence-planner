@@ -30,9 +30,6 @@ window.FP.JointController = class JointController {
   /**
    * Перевіряє, чи точка є "простим стиком" (рівно два сегменти,
    * жодного додаткового Joint-зв'язку з третім прогоном).
-   * Для замкненого контуру (розділ 11) кожна точка має двох сусідів по
-   * колу (prev/next з переходом через 0/n-1) — LOOP-003 показує те саме
-   * меню стику для кута закритого контуру.
    * @returns {{run: object, index: number, prevPoint: object, nextPoint: object} | null}
    */
   getSimpleCorner(pointId) {
@@ -43,17 +40,8 @@ window.FP.JointController = class JointController {
     const run = this.store.runs.get(point.runId);
     if (!run) return null;
     const idx = run.pointIds.indexOf(pointId);
-    if (idx === -1) return null;
-
-    if (run.closed) {
-      const n = run.pointIds.length;
-      if (n < 3) return null;
-      const prevPoint = this.store.points.get(run.pointIds[(idx - 1 + n) % n]);
-      const nextPoint = this.store.points.get(run.pointIds[(idx + 1) % n]);
-      return { run, index: idx, prevPoint, nextPoint, point };
-    }
-
     if (idx <= 0 || idx >= run.pointIds.length - 1) return null; // не внутрішня точка
+
     const prevPoint = this.store.points.get(run.pointIds[idx - 1]);
     const nextPoint = this.store.points.get(run.pointIds[idx + 1]);
     return { run, index: idx, prevPoint, nextPoint, point };

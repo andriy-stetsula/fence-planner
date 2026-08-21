@@ -22,6 +22,7 @@ function initMap() {
   const history = new window.FP.History(store);
   const draw = new window.FP.DrawController(store, sm, history);
   const snap = new window.FP.SnapController(store);
+  const jointCtrl = new window.FP.JointController(store);
 
   window.FP.geo.bindMap(map);
 
@@ -41,6 +42,7 @@ function initMap() {
     try {
       overlay.render();
       updateStatusText();
+      updateJointPopover();
     } catch (err) {
       console.error('Editor render failed:', err);
     }
@@ -291,7 +293,63 @@ function initMap() {
     }
   });
 
-  window.__fp_debug = { map, store, sm, history, draw, overlay, selection, snap };
+  // --- Контекстна панель кута (розділ 10, JNT-002) ---
+  const jointPopover = document.getElementById('joint-popover');
+  const jointAngleInput = document.getElementById('joint-angle-input');
+
+  function updateJointPopover() {
+    const pointId = sm.state.selectedPointId;
+    if (!pointId) {
+      jointPopover.hidden = true;
+      return;
+    }
+    const corner = jointCtrl.getSimpleCorner(pointId);
+    if (!corner) {
+      // JNT-006: більше двох гілок, або з'єднаний з іншим прогоном — панель кута не показуємо
+      jointPopover.hidden = true;
+      return;
+    }
+
+    const angle = jointCtrl.getAngleDeg(pointId);
+    jointAngleInput.value = Math.round(angle);
+
+    const screen = window.FP.geo.toScreen(corner.point.geographicPosition);
+    const mapWrap = document.getElementById('map-wrap').getBoundingClientRect();
+    let left = screen.x + 16;
+    let top = screen.y - 20;
+    left = Math.max(8, Math.min(left, mapWrap.width - 180));
+    top = Math.max(8, Math.min(top, mapWrap.height - 60));
+    jointPopover.style.left = `${left}px`;
+    jointPopover.style.top = `${top}px`;
+    jointPopover.hidden = false;
+  }
+
+  document.getElementById('joint-90').addEventListener('click', () => {
+    const pointId = sm.state.selectedPointId;
+    if (!pointId) return;
+    history.beginAction();
+    jointCtrl.setRightAngle(pointId);
+    history.commitAction();
+    rerender();
+  });
+
+  document.getElementById('joint-angle-apply').addEventListener('click', () => {
+    const pointId = sm.state.selectedPointId;
+    if (!pointId) return;
+    const deg = parseInt(jointAngleInput.value, 10);
+    if (Number.isNaN(deg) || deg < 1 || deg > 179) return; // JNT-004: 1-179°
+    history.beginAction();
+    jointCtrl.setAngleDeg(pointId, deg);
+    history.commitAction();
+    rerender();
+  });
+
+  document.getElementById('joint-close').addEventListener('click', () => {
+    sm.clearSelection();
+    rerender();
+  });
+
+  window.__fp_debug = { map, store, sm, history, draw, overlay, selection, snap, jointCtrl };
 }
 
 window.addEventListener('DOMContentLoaded', initMap);

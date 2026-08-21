@@ -90,6 +90,29 @@ window.FP.geo = (() => {
     };
   }
 
+  /**
+   * Локальна планарна апроксимація (метри), з початком координат в origin.
+   * Використовується для обчислення кутів і поворотів (розділ 10),
+   * коректно для невеликих відстаней паркану.
+   */
+  function toLocalXY(origin, geo) {
+    const metersPerDegLat = 111320;
+    const metersPerDegLng = 111320 * Math.cos((origin.lat * Math.PI) / 180);
+    return {
+      x: (geo.lng - origin.lng) * metersPerDegLng,
+      y: (geo.lat - origin.lat) * metersPerDegLat,
+    };
+  }
+
+  function fromLocalXY(origin, xy) {
+    const metersPerDegLat = 111320;
+    const metersPerDegLng = 111320 * Math.cos((origin.lat * Math.PI) / 180);
+    return {
+      lat: origin.lat + xy.y / metersPerDegLat,
+      lng: origin.lng + xy.x / metersPerDegLng,
+    };
+  }
+
   return {
     bindMap,
     toScreen,
@@ -99,5 +122,7 @@ window.FP.geo = (() => {
     roundLength,
     config,
     pointAtDistanceAlongDirection,
+    toLocalXY,
+    fromLocalXY,
   };
 })();

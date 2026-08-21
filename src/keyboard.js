@@ -84,6 +84,7 @@ window.FP.bindKeyboard = function bindKeyboard({ sm, draw, history, callbacks })
           } else {
             history.undo();
           }
+          callbacks.onHistoryChanged?.();
           callbacks.onGeometryChanged?.();
         }
         break;
@@ -91,6 +92,7 @@ window.FP.bindKeyboard = function bindKeyboard({ sm, draw, history, callbacks })
         if (e.metaKey || e.ctrlKey) {
           e.preventDefault();
           history.redo();
+          callbacks.onHistoryChanged?.();
           callbacks.onGeometryChanged?.();
         }
         break;

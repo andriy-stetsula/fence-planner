@@ -25,12 +25,45 @@ function initMap() {
   window.FP.geo.bindMap(map);
 
   const svgEl = document.getElementById('editor-svg');
-  const overlay = new window.FP.EditorOverlay(map, svgEl, store, sm, draw);
+  const selection = new window.FP.SelectionController(store, sm, history, map, () => rerender());
+  const overlay = new window.FP.EditorOverlay(map, svgEl, store, sm, draw, selection);
 
   function rerender() {
-    overlay.render();
+    try {
+      overlay.render();
+      updateStatusText();
+    } catch (err) {
+      console.error('Editor render failed:', err);
+    }
   }
   sm.onChange(rerender);
+
+  function updateStatusText() {
+    const runsCount = store.runs.size;
+    const pointsCount = store.points.size;
+    document.getElementById('status-text').textContent =
+      `Прогонів: ${runsCount} · Точок: ${pointsCount} · Undo: ${history.undoStack.length} · Redo: ${history.redoStack.length}`;
+  }
+
+  /**
+   * EditorState (draftRunId, selection) НЕ входить у DataStore.snapshot(),
+   * тому після Undo/Redo потрібно перевірити, чи досі існує прогін/елемент,
+   * на який посилається поточний стан редактора, і скинути посилання,
+   * якщо він був видалений відкатом.
+   */
+  function resyncEditorStateAfterHistoryChange() {
+    const s = sm.state;
+    if (s.draftRunId && !store.runs.has(s.draftRunId)) {
+      s.draftRunId = null;
+      draw.livePreviewGeo = null;
+    }
+    if (s.selectedRunId && !store.runs.has(s.selectedRunId)) {
+      s.selectedRunId = null;
+    }
+    if (s.selectedPointId && !store.points.has(s.selectedPointId)) {
+      s.selectedPointId = null;
+    }
+  }
 
   // --- Toolbar wiring ---
   const toolButtons = document.querySelectorAll('.tool-btn');
@@ -50,11 +83,15 @@ function initMap() {
   });
   document.getElementById('btn-undo').addEventListener('click', () => {
     history.undo();
+    resyncEditorStateAfterHistoryChange();
     rerender();
+    updateFinishButton();
   });
   document.getElementById('btn-redo').addEventListener('click', () => {
     history.redo();
+    resyncEditorStateAfterHistoryChange();
     rerender();
+    updateFinishButton();
   });
 
   const finishBtn = document.getElementById('btn-finish-run');
@@ -74,11 +111,18 @@ function initMap() {
   // панорамування Leaflet лишається штатним, бо ми не викликаємо
   // L.DomEvent.stop() і не блокуємо взаємодію з картою.
   map.on('click', (e) => {
-    if (sm.state.activeTool !== 'draw') return;
-    const geoPoint = { lat: e.latlng.lat, lng: e.latlng.lng };
-    draw.onMapClick(geoPoint);
-    rerender();
-    updateFinishButton();
+    if (sm.state.activeTool === 'draw') {
+      const geoPoint = { lat: e.latlng.lat, lng: e.latlng.lng };
+      draw.onMapClick(geoPoint);
+      rerender();
+      updateFinishButton();
+      return;
+    }
+    if (sm.state.activeTool === 'select') {
+      // Клік по порожній карті (не по лінії/вузлу — ті самі мають stopPropagation)
+      // знімає вибір, UI-005.
+      selection.handleEmptyMapClick();
+    }
   });
 
   map.on('mousemove', (e) => {
@@ -111,6 +155,9 @@ function initMap() {
         rerender();
         updateFinishButton();
       },
+      onHistoryChanged: () => {
+        resyncEditorStateAfterHistoryChange();
+      },
       closeNumberField: () => {
         document.getElementById('length-popover').hidden = true;
       },
@@ -121,7 +168,7 @@ function initMap() {
         /* TODO: розділ 9.3, наступний крок */
       },
       onDelete: () => {
-        /* TODO: розділ 8.1, наступний крок */
+        selection.deleteSelected();
       },
       onDuplicate: () => {
         /* TODO: Duplicate, розділ 5 */

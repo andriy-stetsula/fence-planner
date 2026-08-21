@@ -122,6 +122,44 @@ class DataStore {
     this.runs.delete(runId);
   }
 
+  /**
+   * Видалити один вузол з прогону (SEL-001/8.1 "вибрано вільний вузол").
+   * Сусідні сегменти автоматично з'єднуються (просто видаляється точка
+   * зі списку, лінія стає прямою між сусідами).
+   * Якщо в прогоні залишається < 2 точок — прогін видаляється цілком.
+   */
+  removePoint(pointId) {
+    const point = this.points.get(pointId);
+    if (!point) return;
+    const run = this.runs.get(point.runId);
+    if (!run) return;
+    run.pointIds = run.pointIds.filter((id) => id !== pointId);
+    this.points.delete(pointId);
+    if (run.pointIds.length < 2) {
+      this.removeRun(run.id);
+    }
+  }
+
+  /** Зсунути всі точки прогону на geo-дельту (розділ 12, MOV-001) */
+  moveRun(runId, deltaLat, deltaLng) {
+    const run = this.runs.get(runId);
+    if (!run) return;
+    for (const pid of run.pointIds) {
+      const p = this.points.get(pid);
+      p.geographicPosition = {
+        lat: p.geographicPosition.lat + deltaLat,
+        lng: p.geographicPosition.lng + deltaLng,
+      };
+    }
+  }
+
+  /** Перемістити один вузол у нову geo-позицію (розділ 8, SEL-003/SEL-004) */
+  movePoint(pointId, newGeoPosition) {
+    const point = this.points.get(pointId);
+    if (!point) return;
+    point.geographicPosition = newGeoPosition;
+  }
+
   /** Знімок для Undo/Redo (спрощений — повне клонування, розділ 21) */
   snapshot() {
     return {

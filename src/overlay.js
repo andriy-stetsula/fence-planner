@@ -17,13 +17,15 @@ window.FP.EditorOverlay = class EditorOverlay {
    * @param {InstanceType<typeof window.FP.model.DataStore>} store
    * @param {InstanceType<typeof window.FP.StateMachine>} sm
    * @param {InstanceType<typeof window.FP.DrawController>} draw
+   * @param {InstanceType<typeof window.FP.SelectionController>} [selection]
    */
-  constructor(map, svgEl, store, sm, draw) {
+  constructor(map, svgEl, store, sm, draw, selection = null) {
     this.map = map;
     this.svg = svgEl;
     this.store = store;
     this.sm = sm;
     this.draw = draw;
+    this.selection = selection;
 
     // Шари, у порядку відображення (розділ 19.1: 3 паркан, 4 розміри, 5 вузли, 6 preview)
     this.gFence = this._makeGroup('layer-fence');
@@ -70,7 +72,8 @@ window.FP.EditorOverlay = class EditorOverlay {
     for (let i = 0; i < points.length - 1; i += 1) {
       const a = window.FP.geo.toScreen(points[i].geographicPosition);
       const b = window.FP.geo.toScreen(points[i + 1].geographicPosition);
-      this._line(this.gFence, a, b, isSelected ? 'fence-line selected' : 'fence-line');
+      const lineEl = this._line(this.gFence, a, b, isSelected ? 'fence-line selected' : 'fence-line');
+      if (this.selection) this.selection.attachLineHandlers(lineEl, run.id);
 
       const lengthMeters = window.FP.geo.roundLength(
         window.FP.geo.distanceMeters(points[i].geographicPosition, points[i + 1].geographicPosition)
@@ -81,7 +84,11 @@ window.FP.EditorOverlay = class EditorOverlay {
     for (const p of points) {
       const screen = window.FP.geo.toScreen(p.geographicPosition);
       const isJoint = !!p.jointId;
-      this._node(screen, isJoint ? 'node joint' : 'node free-end');
+      const isSelectedPoint = this.sm.state.selectedPointId === p.id;
+      let className = isJoint ? 'node joint' : 'node free-end';
+      if (isSelectedPoint) className += ' selected';
+      const nodeEl = this._node(screen, className);
+      if (this.selection) this.selection.attachNodeHandlers(nodeEl, p.id, run.id);
     }
   }
 

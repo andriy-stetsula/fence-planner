@@ -231,6 +231,18 @@ window.FP.SelectionController = class SelectionController {
         if (this.snap) this.snap.clearBlock(); // 9.3/LOOP-004: блок діє лише в межах цієї drag-сесії
         this.history.commitAction();
         this.sm.endDrag();
+        // GEN-003/UI-005: перетягнутий елемент стає вибраним — без цього
+        // selectedObjectId/selectedPointId лишався б від попереднього вибору,
+        // і його стара контекстна панель (напр. ворота) могла б лишитись
+        // відкритою одночасно з новою (напр. resize-попап щойно пересунутого
+        // об'єкта ділянки) — саме накладання панелей одна на одну.
+        if (this.session.type === 'point') {
+          this.sm.select({ pointId: this.session.id, runId: this.session.runId });
+        } else if (this.session.type === 'shape') {
+          this.sm.select({ objectId: this.session.id });
+        } else {
+          this.sm.select({ runId: this.session.id });
+        }
       }
     } else if (this.sm.state.activeTool === 'gap') {
       // Клік по сегменту в режимі Fence gap — саме те, що нам треба

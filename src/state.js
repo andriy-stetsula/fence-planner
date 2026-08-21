@@ -1,30 +1,10 @@
-/**
- * state.js
- * State machine редактора — розділ 4 ТЗ.
- *
- * Явний поточний режим запобігає ситуації, коли один клік одночасно
- * вибирає об'єкт, додає точку і рухає карту.
- *
- * Режими (EditorState.mode): 'select' | 'draw' | 'drawSlidingGate' |
- * 'placeObject' | 'dragging' | 'editNumber'
- *
- * PTR-001: клік перетворюється на drag лише після невеликого руху
- * вказівника (поріг 4-7 px).
- * PTR-003: коли не малюємо і не тягнемо — панорамування/zoom Google Maps
- * має працювати штатно (тобто ми НЕ ставимо hit-layer поверх усієї карти
- * в режимі select без вибраного елемента).
- */
-
 window.FP = window.FP || {};
 
 window.FP.StateMachine = class StateMachine {
-  /**
-   * @param {InstanceType<typeof window.FP.model.EditorState>} editorState
-   */
   constructor(editorState) {
     this.state = editorState;
     this.listeners = new Set();
-    this.DRAG_THRESHOLD_PX = 5; // PTR-001: рекомендовано 4-7px
+    this.DRAG_THRESHOLD_PX = 5;
   }
 
   onChange(fn) {
@@ -37,8 +17,6 @@ window.FP.StateMachine = class StateMachine {
   }
 
   setTool(tool) {
-    // Перемикання інструмента завжди повертає в базовий режим для цього інструмента
-    // і скидає незавершені чернетки/вибір, щоб не змішувати стани.
     this.clearSelection();
     this.state.activeTool = tool;
     switch (tool) {
@@ -58,13 +36,9 @@ window.FP.StateMachine = class StateMachine {
         this.state.mode = 'drawSlidingGate';
         break;
       case 'posts':
-        // 5/16: Additional posts — "Розміщення об'єкта" (розділ 4): наступний
-        // клік по лінії/стійці воріт ставить додатковий стовп.
         this.state.mode = 'placeObject';
         break;
       case 'shapes':
-        // 5/17: Site objects — "Розміщення об'єкта" (розділ 4): наступний
-        // клік по карті ставить обраний тип об'єкта ділянки.
         this.state.mode = 'placeObject';
         break;
       default:
@@ -73,7 +47,6 @@ window.FP.StateMachine = class StateMachine {
     this._emit();
   }
 
-  /** PST-003: перемикач змінює лише видимість автоматичних LINE posts. */
   togglePosts() {
     this.state.showAutoPosts = !this.state.showAutoPosts;
     this._emit();
@@ -88,7 +61,6 @@ window.FP.StateMachine = class StateMachine {
   }
 
   select({ runId = null, segmentId = null, pointId = null, objectId = null }) {
-    // GEN-003 / SEL-005: одночасно вибраний лише один елемент.
     this.clearSelection();
     this.state.selectedRunId = runId;
     this.state.selectedSegmentId = segmentId;
@@ -108,7 +80,6 @@ window.FP.StateMachine = class StateMachine {
   }
 
   exitEditNumber() {
-    // повертаємось у режим, що відповідає активному інструменту
     this.state.mode = this.state.activeTool === 'draw' ? 'draw' : 'select';
     this._emit();
   }
@@ -125,12 +96,6 @@ window.FP.StateMachine = class StateMachine {
     this._emit();
   }
 
-  /**
-   * Esc: розділ 22, "Користувач натиснув Esc" —
-   * спочатку закрити числове поле/чернетку, потім зняти вибір;
-   * не видаляти готову геометрію без Undo/Delete.
-   * @param {boolean} isDrafting - чи є зараз незавершена чернетка (розділ 6.2, SLD-004)
-   */
   handleEscape({ closeNumberField, cancelDraft, isDrafting = false }) {
     if (this.state.mode === 'editNumber') {
       closeNumberField();

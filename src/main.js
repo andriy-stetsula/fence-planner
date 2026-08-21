@@ -52,6 +52,15 @@ function initMap() {
     try {
       overlay.render();
       updateStatusText();
+      // UI-005/GEN-003: гарантовано ховаємо всі контекстні панелі перед тим,
+      // як кожна з чотирьох функцій нижче вирішить, чи показати себе заново.
+      // Друга лінія захисту (перша — select.js тепер оновлює selection після
+      // drag): навіть якщо десь лишиться застаріле selectedObjectId, дві
+      // панелі одночасно більше показані не будуть.
+      jointPopover.hidden = true;
+      gatePopover.hidden = true;
+      slidingGatePopover.hidden = true;
+      shapeResizePopover.hidden = true;
       updateJointPopover();
       updateGatePopover();
       updateSlidingGatePopover();
@@ -650,8 +659,10 @@ function initMap() {
       return;
     }
 
-    shapeWidthInput.value = shape.widthM.toFixed(1);
-    shapeHeightInput.value = shape.heightM.toFixed(1);
+    // Захист: якщо widthM/heightM з якоїсь причини відсутні — беремо дефолт типу,
+    // а не показуємо порожнє поле (розділ 22: дані завжди мають бути коректні).
+    shapeWidthInput.value = (shape.widthM || cfg.widthM).toFixed(1);
+    shapeHeightInput.value = (shape.heightM || cfg.heightM).toFixed(1);
 
     const geo = shapesCtrl.getGeo(shape);
     const screen = window.FP.geo.toScreen(geo);

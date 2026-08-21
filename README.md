@@ -106,4 +106,4 @@ npx serve .
 
 ## Demo
 
-🔗 **Live demo:** https://username.github.io/fence-planner/
+🔗 **Live demo:** https://andriy-stetsula.github.io/fence-planner/

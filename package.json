@@ -1,0 +1,14 @@
+{
+  "name": "fence-planner",
+  "version": "1.0.0",
+  "private": true,
+  "homepage": "https://andriystetsula.github.io/fence-planner",
+  "scripts": {
+    "predeploy": "npm run build",
+    "build": "mkdir -p build && cp index.html style.css build/ && cp -R src build/src",
+    "deploy": "gh-pages -d build"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.3.0"
+  }
+}

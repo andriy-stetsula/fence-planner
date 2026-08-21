@@ -59,6 +59,12 @@ window.FP.EditorOverlay = class EditorOverlay {
     if (this.draw.isDrafting() && this.draw.livePreviewGeo) {
       this._renderLivePreview();
     }
+
+    // SNP-001: під час перетягування вільного кінця — жовтий ореол на найближчій цілі
+    if (this.selection && this.selection.session && this.selection.activeSnapCandidate) {
+      const target = this.store.points.get(this.selection.activeSnapCandidate.pointId);
+      if (target) this._renderSnapHalo(target.geographicPosition);
+    }
   }
 
   _clear(g) {
@@ -73,7 +79,7 @@ window.FP.EditorOverlay = class EditorOverlay {
       const a = window.FP.geo.toScreen(points[i].geographicPosition);
       const b = window.FP.geo.toScreen(points[i + 1].geographicPosition);
       const lineEl = this._line(this.gFence, a, b, isSelected ? 'fence-line selected' : 'fence-line');
-      if (this.selection) this.selection.attachLineHandlers(lineEl, run.id);
+      if (this.selection) this.selection.attachLineHandlers(lineEl, run.id, points[i].id, points[i + 1].id);
 
       const lengthMeters = window.FP.geo.roundLength(
         window.FP.geo.distanceMeters(points[i].geographicPosition, points[i + 1].geographicPosition)
@@ -120,6 +126,17 @@ window.FP.EditorOverlay = class EditorOverlay {
     el.setAttribute('class', className);
     this.gNodes.appendChild(el);
     return el;
+  }
+
+  /** SNP-001: жовтий ореол навколо найближчої цілі прилипання під час drag */
+  _renderSnapHalo(geoPosition) {
+    const screen = window.FP.geo.toScreen(geoPosition);
+    const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    el.setAttribute('cx', screen.x);
+    el.setAttribute('cy', screen.y);
+    el.setAttribute('r', 12);
+    el.setAttribute('class', 'snap-halo');
+    this.gPreview.appendChild(el);
   }
 
   /** DIM-005: метри з одним десятковим знаком. DIM-004: текст ніколи не догори ногами. */

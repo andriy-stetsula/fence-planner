@@ -21,18 +21,24 @@ window.FP.SelectionController = class SelectionController {
    * @param {InstanceType<typeof window.FP.History>} history
    * @param {L.Map} map
    * @param {() => void} rerender
+   * @param {InstanceType<typeof window.FP.SnapController>} [snap]
    */
-  constructor(store, sm, history, map, rerender) {
+  constructor(store, sm, history, map, rerender, snap = null, onSegmentClick = null) {
     this.store = store;
     this.sm = sm;
     this.history = history;
     this.map = map;
     this.rerender = rerender;
+    this.snap = snap;
+    this.onSegmentClick = onSegmentClick;
 
     this.DRAG_THRESHOLD_PX = 5; // PTR-001
 
-    /** активна drag-сесія: null | { type: 'point'|'run', id, startScreen, moved, lastGeo } */
+    /** активна drag-сесія: null | { type: 'point'|'run', id, startScreen, moved, lastGeo, snapCandidate } */
     this.session = null;
+
+    /** поточна ціль прилипання під час drag — читає overlay.js для рендеру ореолу (SNP-001) */
+    this.activeSnapCandidate = null;
 
     this._onWindowPointerMove = this._onWindowPointerMove.bind(this);
     this._onWindowPointerUp = this._onWindowPointerUp.bind(this);
@@ -43,12 +49,12 @@ window.FP.SelectionController = class SelectionController {
   }
 
   /** Викликається з overlay.js при рендері кожної лінії прогону */
-  attachLineHandlers(lineEl, runId) {
+  attachLineHandlers(lineEl, runId, pointAId, pointBId) {
     if (!this.isActive()) return;
     lineEl.style.pointerEvents = 'stroke';
     lineEl.addEventListener('pointerdown', (e) => {
       e.stopPropagation();
-      this._startSession('run', runId, e);
+      this._startSession('run', runId, e, null, { pointAId, pointBId });
     });
   }
 
@@ -69,12 +75,13 @@ window.FP.SelectionController = class SelectionController {
     this.rerender();
   }
 
-  _startSession(type, id, pointerEvent, extraRunId = null) {
+  _startSession(type, id, pointerEvent, extraRunId = null, segmentInfo = null) {
     this.map.dragging.disable(); // PTR-003: під час взаємодії з елементом карта не панорамується
     this.session = {
       type,
       id,
       runId: extraRunId,
+      segmentInfo,
       startScreen: { x: pointerEvent.clientX, y: pointerEvent.clientY },
       moved: false,
     };
@@ -117,6 +124,15 @@ window.FP.SelectionController = class SelectionController {
       this.session.lastGeo = point.geographicPosition;
     }
     this.store.movePoint(pointId, newGeo);
+
+    // SNP-001/9.4: під час перетягування вільного кінця шукаємо найближчу ціль
+    // прилипання (лише preview, реальний зв'язок — на pointerup, SNP-003).
+    if (this.snap) {
+      const point = this.store.points.get(pointId);
+      if (!point.jointId) {
+        this.activeSnapCandidate = this.snap.findEndpointSnapTarget(pointId, newGeo);
+      }
+    }
   }
 
   _dragRun(runId, newGeo) {
@@ -135,6 +151,13 @@ window.FP.SelectionController = class SelectionController {
     if (!this.session) return;
 
     if (this.session.moved) {
+      // SNP-003: якщо під час перетягування вільного кінця ціль ще в радіусі —
+      // створюємо реальний зв'язок саме тут, на відпусканні.
+      if (this.session.type === 'point' && this.activeSnapCandidate && this.snap) {
+        this.snap.createJoint(this.session.id, this.activeSnapCandidate.pointId);
+      }
+      this.activeSnapCandidate = null;
+
       // Реальний drag завершено — зафіксувати крок історії (HIS-001)
       this.history.commitAction();
       this.sm.endDrag();
@@ -144,6 +167,9 @@ window.FP.SelectionController = class SelectionController {
         this.sm.select({ pointId: this.session.id, runId: this.session.runId });
       } else {
         this.sm.select({ runId: this.session.id });
+        if (this.session.segmentInfo && this.onSegmentClick) {
+          this.onSegmentClick(this.session.segmentInfo.pointAId, this.session.segmentInfo.pointBId);
+        }
       }
     }
 

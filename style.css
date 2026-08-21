@@ -75,6 +75,12 @@ html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
 .node.joint { fill: #ffe066; stroke: #333; stroke-width: 1.5; }
 .node.selected { stroke: #4a5cf0; stroke-width: 3; }
 
+.snap-halo {
+  fill: rgba(255, 224, 102, 0.35);
+  stroke: #ffcc00;
+  stroke-width: 2;
+}
+
 .dimension-label {
   font-size: 12px;
   fill: #111;

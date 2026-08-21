@@ -21,11 +21,20 @@ function initMap() {
   const sm = new window.FP.StateMachine(editorState);
   const history = new window.FP.History(store);
   const draw = new window.FP.DrawController(store, sm, history);
+  const snap = new window.FP.SnapController(store);
 
   window.FP.geo.bindMap(map);
 
   const svgEl = document.getElementById('editor-svg');
-  const selection = new window.FP.SelectionController(store, sm, history, map, () => rerender());
+  const selection = new window.FP.SelectionController(
+    store,
+    sm,
+    history,
+    map,
+    () => rerender(),
+    snap,
+    (pointAId, pointBId) => openLengthPopover(pointAId, pointBId)
+  );
   const overlay = new window.FP.EditorOverlay(map, svgEl, store, sm, draw, selection);
 
   function rerender() {
@@ -159,13 +168,23 @@ function initMap() {
         resyncEditorStateAfterHistoryChange();
       },
       closeNumberField: () => {
-        document.getElementById('length-popover').hidden = true;
+        closeLengthPopover();
       },
       togglePosts: () => {
         /* TODO: PST-003, наступний крок */
       },
       toggleJointLock: () => {
-        /* TODO: розділ 9.3, наступний крок */
+        // L: для вибраного стику — роз'єднати (розділ 9.3, розділ 20)
+        const s = sm.state;
+        if (s.selectedPointId) {
+          const point = store.points.get(s.selectedPointId);
+          if (point && point.jointId) {
+            history.beginAction();
+            snap.unlockJoint(point.jointId);
+            history.commitAction();
+            rerender();
+          }
+        }
       },
       onDelete: () => {
         selection.deleteSelected();
@@ -176,7 +195,103 @@ function initMap() {
     },
   });
 
-  window.__fp_debug = { map, store, sm, history, draw, overlay };
+  // --- Точна довжина сегмента (розділ 7.3) ---
+  let activeLengthSegment = null; // { pointAId, pointBId }
+  const lengthPopover = document.getElementById('length-popover');
+  const lengthInput = document.getElementById('length-input');
+
+  function openLengthPopover(pointAId, pointBId) {
+    const pointA = store.points.get(pointAId);
+    const pointB = store.points.get(pointBId);
+    if (!pointA || !pointB) return;
+
+    activeLengthSegment = { pointAId, pointBId };
+    const currentMeters = window.FP.geo.roundLength(
+      window.FP.geo.distanceMeters(pointA.geographicPosition, pointB.geographicPosition)
+    );
+    lengthInput.value = currentMeters.toFixed(1);
+
+    // Позиціонуємо popover біля середини сегмента, обмежуючи в межах viewport (UI-003)
+    const a = window.FP.geo.toScreen(pointA.geographicPosition);
+    const b = window.FP.geo.toScreen(pointB.geographicPosition);
+    const mapWrap = document.getElementById('map-wrap').getBoundingClientRect();
+    let left = (a.x + b.x) / 2;
+    let top = (a.y + b.y) / 2 - 40;
+    left = Math.max(8, Math.min(left, mapWrap.width - 160));
+    top = Math.max(8, top);
+
+    lengthPopover.style.left = `${left}px`;
+    lengthPopover.style.top = `${top}px`;
+    lengthPopover.hidden = false;
+    sm.enterEditNumber();
+    lengthInput.focus();
+    lengthInput.select();
+  }
+
+  function closeLengthPopover() {
+    lengthPopover.hidden = true;
+    activeLengthSegment = null;
+    sm.exitEditNumber();
+  }
+
+  function applyExactLength() {
+    if (!activeLengthSegment) return;
+    const desired = parseFloat(lengthInput.value);
+    if (Number.isNaN(desired) || desired <= 0) {
+      return; // розділ 22: неприпустима довжина — не змінювати геометрію
+    }
+
+    const { pointAId, pointBId } = activeLengthSegment;
+    const pointA = store.points.get(pointAId);
+    const pointB = store.points.get(pointBId);
+    if (!pointA || !pointB) return;
+
+    const aJointed = !!pointA.jointId;
+    const bJointed = !!pointB.jointId;
+
+    if (aJointed && bJointed) {
+      // 7.3: обидва кінці зафіксовані — не змінювати геометрію автоматично
+      alert('Обидва кінці сегмента зафіксовані. Спочатку роз\'єднайте один стик (клавіша L).');
+      return;
+    }
+
+    history.beginAction();
+    if (bJointed && !aJointed) {
+      // Рухається вільна сторона — тут це A
+      const newPos = window.FP.geo.pointAtDistanceAlongDirection(
+        pointB.geographicPosition,
+        pointA.geographicPosition,
+        desired
+      );
+      store.movePoint(pointAId, newPos);
+    } else {
+      // За замовчуванням: A лишається на місці, рухається B
+      const newPos = window.FP.geo.pointAtDistanceAlongDirection(
+        pointA.geographicPosition,
+        pointB.geographicPosition,
+        desired
+      );
+      store.movePoint(pointBId, newPos);
+    }
+    history.commitAction();
+
+    closeLengthPopover();
+    rerender();
+  }
+
+  document.getElementById('length-apply').addEventListener('click', applyExactLength);
+  document.getElementById('length-close').addEventListener('click', closeLengthPopover);
+  lengthInput.addEventListener('keydown', (e) => {
+    if (e.code === 'Enter') {
+      e.preventDefault();
+      applyExactLength();
+    } else if (e.code === 'Escape') {
+      e.preventDefault();
+      closeLengthPopover();
+    }
+  });
+
+  window.__fp_debug = { map, store, sm, history, draw, overlay, selection, snap };
 }
 
 window.addEventListener('DOMContentLoaded', initMap);

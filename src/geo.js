@@ -65,5 +65,39 @@ window.FP.geo = (() => {
     return Math.round(meters / step) * step;
   }
 
-  return { bindMap, toScreen, toGeo, distanceMeters, distanceScreenPx, roundLength, config };
+  /**
+   * 7.3: обчислити нову geo-позицію точки так, щоб відстань від fixedGeo
+   * дорівнювала точно desiredMeters, зберігаючи поточний напрямок на currentGeo.
+   * Проста локальна апроксимація (коректна для невеликих відстаней паркану).
+   */
+  function pointAtDistanceAlongDirection(fixedGeo, currentGeo, desiredMeters) {
+    const metersPerDegLat = 111320;
+    const metersPerDegLng = 111320 * Math.cos((fixedGeo.lat * Math.PI) / 180);
+
+    const dx = (currentGeo.lng - fixedGeo.lng) * metersPerDegLng;
+    const dy = (currentGeo.lat - fixedGeo.lat) * metersPerDegLat;
+    const currentDist = Math.hypot(dx, dy) || 1e-9;
+
+    const unitX = dx / currentDist;
+    const unitY = dy / currentDist;
+
+    const newDx = unitX * desiredMeters;
+    const newDy = unitY * desiredMeters;
+
+    return {
+      lat: fixedGeo.lat + newDy / metersPerDegLat,
+      lng: fixedGeo.lng + newDx / metersPerDegLng,
+    };
+  }
+
+  return {
+    bindMap,
+    toScreen,
+    toGeo,
+    distanceMeters,
+    distanceScreenPx,
+    roundLength,
+    config,
+    pointAtDistanceAlongDirection,
+  };
 })();

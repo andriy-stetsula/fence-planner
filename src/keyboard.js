@@ -60,6 +60,10 @@ window.FP.bindKeyboard = function bindKeyboard({ sm, draw, history, callbacks })
         draw.startNewRun();
         callbacks.onGeometryChanged?.();
         break;
+      case 'KeyG':
+        sm.setTool('gap');
+        callbacks.onToolChanged?.('gap');
+        break;
       case 'Enter':
         if (sm.state.mode === 'draw') {
           draw.finishRun();

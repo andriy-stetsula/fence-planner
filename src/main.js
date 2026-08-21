@@ -23,6 +23,7 @@ function initMap() {
   const draw = new window.FP.DrawController(store, sm, history);
   const snap = new window.FP.SnapController(store);
   const jointCtrl = new window.FP.JointController(store);
+  const gapCtrl = new window.FP.GapController(store);
 
   window.FP.geo.bindMap(map);
 
@@ -34,7 +35,8 @@ function initMap() {
     map,
     () => rerender(),
     snap,
-    (pointAId, pointBId) => openLengthPopover(pointAId, pointBId)
+    (pointAId, pointBId) => openLengthPopover(pointAId, pointBId),
+    (runId, pointAId, pointBId, clickGeo) => handleGapClick(runId, pointAId, pointBId, clickGeo)
   );
   const overlay = new window.FP.EditorOverlay(map, svgEl, store, sm, draw, selection);
 
@@ -142,15 +144,34 @@ function initMap() {
     rerender();
   });
 
-  // Коли активний інструмент "draw" — тимчасово вимикаємо перетягування карти,
-  // щоб клік по карті не одночасно і панорамував, і малював (PTR-003).
+  // Коли активний інструмент "draw" або "gap" — тимчасово вимикаємо перетягування карти,
+  // щоб клік по карті не одночасно і панорамував, і малював/різав (PTR-003).
   sm.onChange((state) => {
-    if (state.activeTool === 'draw') {
+    if (state.activeTool === 'draw' || state.activeTool === 'gap') {
       map.dragging.disable();
     } else {
       map.dragging.enable();
     }
   });
+
+  function handleGapClick(runId, pointAId, pointBId, clickGeo) {
+    const widthInput = document.getElementById('gap-width-input');
+    const widthMeters = parseFloat(widthInput.value);
+    if (Number.isNaN(widthMeters) || widthMeters <= 0) {
+      alert('Вкажіть коректну ширину розриву (> 0 м)');
+      return;
+    }
+
+    history.beginAction();
+    const result = gapCtrl.createGap(runId, pointAId, pointBId, clickGeo, widthMeters);
+    if (!result.success) {
+      history.cancelAction();
+      alert(result.message);
+      return;
+    }
+    history.commitAction();
+    rerender();
+  }
 
   // --- Keyboard wiring ---
   window.FP.bindKeyboard({
@@ -349,7 +370,7 @@ function initMap() {
     rerender();
   });
 
-  window.__fp_debug = { map, store, sm, history, draw, overlay, selection, snap, jointCtrl };
+  window.__fp_debug = { map, store, sm, history, draw, overlay, selection, snap, jointCtrl, gapCtrl };
 }
 
 window.addEventListener('DOMContentLoaded', initMap);

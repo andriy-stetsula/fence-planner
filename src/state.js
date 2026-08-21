@@ -48,6 +48,9 @@ window.FP.StateMachine = class StateMachine {
       case 'draw':
         this.state.mode = 'draw';
         break;
+      case 'gap':
+        this.state.mode = 'gap';
+        break;
       case 'slidingGate':
         this.state.mode = 'drawSlidingGate';
         break;

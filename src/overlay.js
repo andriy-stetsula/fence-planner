@@ -84,10 +84,16 @@ window.FP.EditorOverlay = class EditorOverlay {
       this._renderSlidingGateDraftPreview();
     }
 
-    // SNP-001: під час перетягування вільного кінця — жовтий ореол на найближчій цілі
+    // SNP-001: під час перетягування вільного кінця — жовтий ореол на найближчій цілі.
+    // Для T-стику (segment) ціль — це точка проекції на сегмент, а не існуючий Point.
     if (this.selection && this.selection.session && this.selection.activeSnapCandidate) {
-      const target = this.store.points.get(this.selection.activeSnapCandidate.pointId);
-      if (target) this._renderSnapHalo(target.geographicPosition);
+      const candidate = this.selection.activeSnapCandidate;
+      if (candidate.kind === 'segment') {
+        this._renderSnapHalo(candidate.geo);
+      } else {
+        const target = this.store.points.get(candidate.pointId);
+        if (target) this._renderSnapHalo(target.geographicPosition);
+      }
     }
   }
 
@@ -98,15 +104,18 @@ window.FP.EditorOverlay = class EditorOverlay {
   _renderRun(run) {
     const points = this.store.getRunPoints(run.id);
     const isSelected = this.sm.state.selectedRunId === run.id;
+    // LOOP-001/002: замкнений контур — додатковий сегмент від останньої точки до першої
+    const segCount = run.closed ? points.length : points.length - 1;
 
-    for (let i = 0; i < points.length - 1; i += 1) {
+    for (let i = 0; i < segCount; i += 1) {
+      const nextIdx = (i + 1) % points.length;
       const a = window.FP.geo.toScreen(points[i].geographicPosition);
-      const b = window.FP.geo.toScreen(points[i + 1].geographicPosition);
+      const b = window.FP.geo.toScreen(points[nextIdx].geographicPosition);
       const lineEl = this._line(this.gFence, a, b, isSelected ? 'fence-line selected' : 'fence-line');
-      if (this.selection) this.selection.attachLineHandlers(lineEl, run.id, points[i].id, points[i + 1].id);
+      if (this.selection) this.selection.attachLineHandlers(lineEl, run.id, points[i].id, points[nextIdx].id);
 
       const lengthMeters = window.FP.geo.roundLength(
-        window.FP.geo.distanceMeters(points[i].geographicPosition, points[i + 1].geographicPosition)
+        window.FP.geo.distanceMeters(points[i].geographicPosition, points[nextIdx].geographicPosition)
       );
       this._dimensionLabel(a, b, lengthMeters);
     }

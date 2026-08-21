@@ -113,14 +113,15 @@ window.FP.StateMachine = class StateMachine {
    * Esc: розділ 22, "Користувач натиснув Esc" —
    * спочатку закрити числове поле/чернетку, потім зняти вибір;
    * не видаляти готову геометрію без Undo/Delete.
+   * @param {boolean} isDrafting - чи є зараз незавершена чернетка (розділ 6.2, SLD-004)
    */
-  handleEscape({ closeNumberField, cancelDraft }) {
+  handleEscape({ closeNumberField, cancelDraft, isDrafting = false }) {
     if (this.state.mode === 'editNumber') {
       closeNumberField();
       this.exitEditNumber();
       return;
     }
-    if (this.state.mode === 'draw' && this.state.draftRunId) {
+    if (isDrafting) {
       cancelDraft();
       return;
     }

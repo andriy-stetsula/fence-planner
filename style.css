@@ -113,6 +113,14 @@ html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
 }
 .gate-popover button.active { background: #ffe066; border-color: #d9a300; }
 
+/* --- Розсувні ворота, розділ 14 ТЗ --- */
+.sliding-gate-panel { stroke: #2f6bff; stroke-width: 3; pointer-events: stroke; cursor: pointer; }
+.sliding-gate-pocket { stroke: #888; stroke-width: 2; stroke-dasharray: 5 4; pointer-events: none; }
+.sliding-gate-arrow { fill: #888; pointer-events: none; }
+.sliding-gate-draft { stroke-dasharray: 6 4; }
+.gate.sliding-gate.selected .sliding-gate-panel { stroke: #1a3fa8; stroke-width: 4; }
+.gate.sliding-gate.selected .gate-post { fill: #1a3fa8; }
+
 /* status message zone, UI-001 */
 #system-message {
   position: absolute;

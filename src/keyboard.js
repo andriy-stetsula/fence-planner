@@ -10,7 +10,7 @@
 
 window.FP = window.FP || {};
 
-window.FP.bindKeyboard = function bindKeyboard({ sm, draw, history, callbacks }) {
+window.FP.bindKeyboard = function bindKeyboard({ sm, draw, history, slidingGate = null, callbacks }) {
   function isTypingTarget(el) {
     if (!el) return false;
     const tag = el.tagName;
@@ -29,10 +29,18 @@ window.FP.bindKeyboard = function bindKeyboard({ sm, draw, history, callbacks })
     // це обробляє окремо через свій slot listener) — тут лише глобальна логіка,
     // коли фокус НЕ в полі.
     if (e.code === 'Escape') {
+      const isDrafting =
+        (sm.state.activeTool === 'draw' && draw.isDrafting()) ||
+        (sm.state.activeTool === 'slidingGate' && !!slidingGate && slidingGate.isDrafting());
       sm.handleEscape({
         closeNumberField: callbacks.closeNumberField,
+        isDrafting,
         cancelDraft: () => {
-          draw.cancelDraft();
+          if (sm.state.activeTool === 'draw') {
+            draw.cancelDraft();
+          } else if (sm.state.activeTool === 'slidingGate' && slidingGate) {
+            slidingGate.cancelDraft();
+          }
           callbacks.onGeometryChanged?.();
         },
       });

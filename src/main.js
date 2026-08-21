@@ -25,6 +25,7 @@ function initMap() {
   const jointCtrl = new window.FP.JointController(store);
   const gapCtrl = new window.FP.GapController(store);
   const gateCtrl = new window.FP.GateController(store, gapCtrl);
+  const slidingGateCtrl = new window.FP.SlidingGateController(store, sm, history);
 
   window.FP.geo.bindMap(map);
 
@@ -40,7 +41,7 @@ function initMap() {
     (runId, pointAId, pointBId, clickGeo) => handleGapClick(runId, pointAId, pointBId, clickGeo),
     (runId, pointAId, pointBId, clickGeo) => handleGateLineClick(runId, pointAId, pointBId, clickGeo)
   );
-  const overlay = new window.FP.EditorOverlay(map, svgEl, store, sm, draw, selection);
+  const overlay = new window.FP.EditorOverlay(map, svgEl, store, sm, draw, selection, slidingGateCtrl);
 
   function rerender() {
     try {
@@ -48,6 +49,7 @@ function initMap() {
       updateStatusText();
       updateJointPopover();
       updateGatePopover();
+      updateSlidingGatePopover();
     } catch (err) {
       console.error('Editor render failed:', err);
     }
@@ -137,6 +139,19 @@ function initMap() {
       updateFinishButton();
       return;
     }
+    if (sm.state.activeTool === 'slidingGate') {
+      // 14.1: перший клік — стійка, другий — напрямок і завершення
+      const geoPoint = { lat: e.latlng.lat, lng: e.latlng.lng };
+      const widthInput = document.getElementById('sliding-gate-width-input');
+      const rawWidth = widthInput.value.trim();
+      const widthOverride = rawWidth === '' ? null : parseFloat(rawWidth);
+      const result = slidingGateCtrl.onMapClick(geoPoint, widthOverride);
+      if (result && result.success) {
+        sm.select({ objectId: result.gateId });
+      }
+      rerender();
+      return;
+    }
     if (sm.state.activeTool === 'select') {
       // Клік по порожній карті (не по лінії/вузлу — ті самі мають stopPropagation)
       // знімає вибір, UI-005.
@@ -145,15 +160,27 @@ function initMap() {
   });
 
   map.on('mousemove', (e) => {
-    if (sm.state.activeTool !== 'draw' || !draw.isDrafting()) return;
-    draw.livePreviewGeo = { lat: e.latlng.lat, lng: e.latlng.lng };
-    rerender();
+    if (sm.state.activeTool === 'draw' && draw.isDrafting()) {
+      draw.livePreviewGeo = { lat: e.latlng.lat, lng: e.latlng.lng };
+      rerender();
+      return;
+    }
+    if (sm.state.activeTool === 'slidingGate' && slidingGateCtrl.isDrafting()) {
+      slidingGateCtrl.livePreviewGeo = { lat: e.latlng.lat, lng: e.latlng.lng };
+      rerender();
+    }
   });
 
-  // Коли активний інструмент "draw" або "gap" — тимчасово вимикаємо перетягування карти,
-  // щоб клік по карті не одночасно і панорамував, і малював/різав (PTR-003).
+  // Коли активний інструмент "draw", "gap" або "gate*" — тимчасово вимикаємо
+  // перетягування карти, щоб клік по карті не одночасно і панорамував,
+  // і малював/різав/ставив ворота (PTR-003).
   sm.onChange((state) => {
-    if (state.activeTool === 'draw' || state.activeTool === 'gap' || state.activeTool === 'gate') {
+    if (
+      state.activeTool === 'draw' ||
+      state.activeTool === 'gap' ||
+      state.activeTool === 'gate' ||
+      state.activeTool === 'slidingGate'
+    ) {
       map.dragging.disable();
     } else {
       map.dragging.enable();
@@ -205,6 +232,7 @@ function initMap() {
     sm,
     draw,
     history,
+    slidingGate: slidingGateCtrl,
     callbacks: {
       onToolChanged: (tool) => {
         toolButtons.forEach((b) => b.classList.toggle('active', b.dataset.tool === tool));
@@ -410,7 +438,7 @@ function initMap() {
       return;
     }
     const gate = store.gates.get(gateId);
-    if (!gate) {
+    if (!gate || gate.type !== 'swing') {
       gatePopover.hidden = true;
       return;
     }
@@ -452,7 +480,50 @@ function initMap() {
     });
   });
 
-  window.__fp_debug = { map, store, sm, history, draw, overlay, selection, snap, jointCtrl, gapCtrl, gateCtrl };
+  // --- Контекстна панель розсувних воріт: напрямок відкату (SLD-002) ---
+  const slidingGatePopover = document.getElementById('sliding-gate-popover');
+  const slidingGateButtons = slidingGatePopover.querySelectorAll('button[data-slide-action]');
+
+  function updateSlidingGatePopover() {
+    const gateId = sm.state.selectedObjectId;
+    if (!gateId) {
+      slidingGatePopover.hidden = true;
+      return;
+    }
+    const gate = store.gates.get(gateId);
+    if (!gate || gate.type !== 'sliding') {
+      slidingGatePopover.hidden = true;
+      return;
+    }
+
+    slidingGateButtons.forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.slideAction === gate.slideDirection);
+    });
+
+    const a = window.FP.geo.toScreen(gate.postAGeo);
+    const b = window.FP.geo.toScreen(gate.postBGeo);
+    const mapWrap = document.getElementById('map-wrap').getBoundingClientRect();
+    let left = (a.x + b.x) / 2;
+    let top = Math.min(a.y, b.y) - 56;
+    left = Math.max(8, Math.min(left, mapWrap.width - 100));
+    top = Math.max(8, top);
+    slidingGatePopover.style.left = `${left}px`;
+    slidingGatePopover.style.top = `${top}px`;
+    slidingGatePopover.hidden = false;
+  }
+
+  slidingGateButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const gateId = sm.state.selectedObjectId;
+      if (!gateId) return;
+      history.beginAction();
+      slidingGateCtrl.setSlideDirection(gateId, btn.dataset.slideAction);
+      history.commitAction();
+      rerender();
+    });
+  });
+
+  window.__fp_debug = { map, store, sm, history, draw, overlay, selection, snap, jointCtrl, gapCtrl, gateCtrl, slidingGateCtrl };
 }
 
 window.addEventListener('DOMContentLoaded', initMap);

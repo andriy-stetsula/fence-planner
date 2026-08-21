@@ -16,6 +16,8 @@
     <input id="gap-width-input" type="number" step="0.1" min="0.1" value="1.0" style="width:56px" title="Ширина розриву, м" />
     <button data-tool="gate" class="tool-btn" title="Swing gates">Swing gates</button>
     <input id="gate-width-input" type="number" step="0.1" min="0.1" value="1.2" style="width:56px" title="Ширина воріт, м" />
+    <button data-tool="slidingGate" class="tool-btn" title="Sliding gates">Sliding gates</button>
+    <input id="sliding-gate-width-input" type="number" step="0.1" min="0.1" placeholder="авто" style="width:64px" title="Точна ширина (SLD-001); порожньо — за двома кліками" />
     <button id="btn-new-run" title="N">New run</button>
     <button id="btn-undo" title="Ctrl+Z">Undo</button>
     <button id="btn-redo" title="Ctrl+Shift+Z">Redo</button>
@@ -50,6 +52,11 @@
       <button data-gate-action="swing-left" title="Відкриття: ліворуч">↑</button>
       <button data-gate-action="swing-right" title="Відкриття: праворуч">↓</button>
     </div>
+    <!-- sliding gate direction controls: two arrows along the gate axis (SLD-002) -->
+    <div id="sliding-gate-popover" class="popover gate-popover" hidden>
+      <button data-slide-action="left" title="Полотно йде ліворуч">←</button>
+      <button data-slide-action="right" title="Полотно йде праворуч">→</button>
+    </div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -62,6 +69,7 @@
   <script src="src/joint.js"></script>
   <script src="src/gap.js"></script>
   <script src="src/gate.js"></script>
+  <script src="src/slidingGate.js"></script>
   <script src="src/select.js"></script>
   <script src="src/overlay.js"></script>
   <script src="src/keyboard.js"></script>

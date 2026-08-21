@@ -62,26 +62,38 @@ class Joint {
 }
 
 /**
- * Gate — розпашні ворота/хвіртка, розділ 13 ТЗ.
- * postAGeo/postBGeo — дві структурні стійки (GAT-001: точна ширина в метрах).
+ * Gate — ворота/хвіртка, розділи 13 і 14 ТЗ.
+ * postAGeo/postBGeo — дві структурні стійки (GAT-001/SLD-003: точна ширина).
+ * type: 'swing' | 'sliding'.
+ *
+ * Для 'swing' (розділ 13):
  * hingeSide: 'A' | 'B' — на якій стійці петлі (стрілки ←/→, 13.3).
  * swingSide: 'left' | 'right' — у який бік від лінії відкривається стулка
  * (стрілки ↑/↓, 13.3). 'right' — за напрямком A->B, стулка повертає праворуч.
+ *
+ * Для 'sliding' (розділ 14):
+ * slideDirection: 'left' | 'right' — у який бік уздовж осі воріт (за межі
+ * стійки A чи стійки B) іде полотно у відкритому положенні (SLD-002).
+ *
  * attachedRunBeforeId/attachedRunAfterId — прогони по обидва боки проєму,
  * якщо ворота стоять на лінії (13.1); null для standalone-об'єкта.
  * GAT-004: замка немає — стан видно за вирівнюванням з лінією.
  */
 class Gate {
-  constructor({ postAGeo, postBGeo, widthM, attachedRunBeforeId = null, attachedRunAfterId = null }) {
+  constructor({ type = 'swing', postAGeo, postBGeo, widthM, attachedRunBeforeId = null, attachedRunAfterId = null }) {
     this.id = nextId('gate');
-    this.type = 'swing';
+    this.type = type;
     this.postAGeo = postAGeo;
     this.postBGeo = postBGeo;
     this.widthM = widthM;
-    this.hingeSide = 'A';
-    this.swingSide = 'right';
     this.attachedRunBeforeId = attachedRunBeforeId;
     this.attachedRunAfterId = attachedRunAfterId;
+    if (type === 'sliding') {
+      this.slideDirection = 'right'; // SLD-002
+    } else {
+      this.hingeSide = 'A';
+      this.swingSide = 'right';
+    }
   }
 }
 

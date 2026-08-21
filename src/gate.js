@@ -50,6 +50,7 @@ window.FP.GateController = class GateController {
     const postBPoint = this.store.points.get(run2.pointIds[0]);
 
     const gate = this.store.createGate({
+      type: 'swing',
       postAGeo: { ...postAPoint.geographicPosition },
       postBGeo: { ...postBPoint.geographicPosition },
       widthM: widthMeters,
@@ -81,6 +82,7 @@ window.FP.GateController = class GateController {
     const postBGeo = window.FP.geo.fromLocalXY(centerGeo, { x: dx, y: dy });
 
     const gate = this.store.createGate({
+      type: 'swing',
       postAGeo,
       postBGeo,
       widthM: widthMeters,
@@ -93,7 +95,7 @@ window.FP.GateController = class GateController {
   /** 13.3: дві стрілки вздовж лінії — яка стійка має петлі */
   setHingeSide(gateId, side) {
     const gate = this.store.gates.get(gateId);
-    if (!gate || (side !== 'A' && side !== 'B')) return false;
+    if (!gate || gate.type !== 'swing' || (side !== 'A' && side !== 'B')) return false;
     gate.hingeSide = side;
     return true;
   }
@@ -101,7 +103,7 @@ window.FP.GateController = class GateController {
   /** 13.3: дві стрілки поперек лінії — у який бік відкривається стулка */
   setSwingSide(gateId, side) {
     const gate = this.store.gates.get(gateId);
-    if (!gate || (side !== 'left' && side !== 'right')) return false;
+    if (!gate || gate.type !== 'swing' || (side !== 'left' && side !== 'right')) return false;
     gate.swingSide = side;
     return true;
   }

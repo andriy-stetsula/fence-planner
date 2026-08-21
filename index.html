@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fence Planner — Map Editor</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div id="toolbar">
+    <button data-tool="select" class="tool-btn active" title="V">Select</button>
+    <button data-tool="draw" class="tool-btn" title="D">Draw a fence line</button>
+    <button data-tool="gap" class="tool-btn" title="Fence gap">Fence gap</button>
+    <input id="gap-width-input" type="number" step="0.1" min="0.1" value="1.0" style="width:56px" title="Ширина розриву, м" />
+    <button data-tool="gate" class="tool-btn" title="Swing gates">Swing gates</button>
+    <input id="gate-width-input" type="number" step="0.1" min="0.1" value="1.2" style="width:56px" title="Ширина воріт, м" />
+    <button data-tool="slidingGate" class="tool-btn" title="Sliding gates">Sliding gates</button>
+    <input id="sliding-gate-width-input" type="number" step="0.1" min="0.1" placeholder="авто" style="width:64px" title="Точна ширина (SLD-001); порожньо — за двома кліками" />
+    <button data-tool="posts" class="tool-btn" title="Additional posts">Additional posts</button>
+    <button id="btn-toggle-posts" title="P">Show/Hide posts</button>
+    <button data-tool="shapes" class="tool-btn" title="Site objects">Shapes</button>
+    <select id="shape-type-select" title="Тип об'єкта ділянки">
+      <option value="house">Будинок</option>
+      <option value="tree">Дерево</option>
+      <option value="pool">Басейн</option>
+      <option value="arbor">Арбор</option>
+      <option value="mailbox">Поштова скринька</option>
+      <option value="parcelPillar">Стовп ділянки</option>
+    </select>
+    <button id="btn-new-run" title="N">New run</button>
+    <button id="btn-undo" title="Ctrl+Z">Undo</button>
+    <button id="btn-redo" title="Ctrl+Shift+Z">Redo</button>
+    <span id="status-text"></span>
+  </div>
+
+  <div id="map-wrap">
+    <div id="map"></div>
+    <svg id="editor-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <button id="btn-finish-run" class="floating-corner-btn" hidden>Finish run (Enter)</button>
+    <div id="length-popover" class="popover" hidden>
+      <input id="length-input" type="number" step="0.1" min="0.1" />
+      <span>m</span>
+      <button id="length-apply">✓</button>
+      <button id="length-close">✕</button>
+    </div>
+    <div id="joint-popover" class="popover" hidden>
+      <button id="joint-lock" title="Роз'єднати стик / відкрити контур (L)">🔓</button>
+      <button id="joint-90">90°</button>
+      <input id="joint-angle-input" type="number" min="1" max="179" step="1" />
+      <span>°</span>
+      <button id="joint-angle-apply">✓</button>
+      <button id="joint-close">✕</button>
+    </div>
+    <div id="gate-popover" class="popover gate-popover" hidden>
+      <button data-gate-action="hinge-a" title="Петлі: стійка A">←</button>
+      <button data-gate-action="hinge-b" title="Петлі: стійка B">→</button>
+      <button data-gate-action="swing-left" title="Відкриття: ліворуч">↑</button>
+      <button data-gate-action="swing-right" title="Відкриття: праворуч">↓</button>
+    </div>
+    <div id="sliding-gate-popover" class="popover gate-popover" hidden>
+      <button data-slide-action="left" title="Полотно йде ліворуч">←</button>
+      <button data-slide-action="right" title="Полотно йде праворуч">→</button>
+    </div>
+    <div id="shape-resize-popover" class="popover" hidden>
+      <input id="shape-width-input" type="number" step="0.1" min="0.1" style="width:56px" title="Ширина, м" />
+      <span>×</span>
+      <input id="shape-height-input" type="number" step="0.1" min="0.1" style="width:56px" title="Довжина, м" />
+      <span>m</span>
+      <button id="shape-resize-apply">✓</button>
+      <button id="shape-resize-close">✕</button>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+<script src="src/model.js"></script>
+<script src="src/geo.js"></script>
+<script src="src/state.js"></script>
+<script src="src/history.js"></script>
+<script src="src/draw.js"></script>
+<script src="src/snap.js"></script>
+<script src="src/joint.js"></script>
+<script src="src/gap.js"></script>
+<script src="src/gate.js"></script>
+<script src="src/slidingGate.js"></script>
+<script src="src/posts.js"></script>
+<script src="src/shapes.js"></script>
+<script src="src/select.js"></script>
+<script src="src/overlay.js"></script>
+<script src="src/keyboard.js"></script>
+
+<script src="src/main.js"></script>
+</body>
+</html>

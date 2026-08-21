@@ -1,27 +1,6 @@
-/**
- * overlay.js (Leaflet версія)
- * Тримає SVG-шар синхронізованим з картою Leaflet і відповідає
- * за фактичний рендер (розділ 19 ТЗ: порядок шарів).
- *
- * У Google Maps позицію overlay перераховує сам API через draw().
- * У Leaflet те саме робимо вручну на подіях карти: 'move' (під час
- * панорамування/зуму) і 'moveend'/'zoomend' (після завершення).
- */
-
 window.FP = window.FP || {};
 
 window.FP.EditorOverlay = class EditorOverlay {
-  /**
-   * @param {L.Map} map
-   * @param {SVGSVGElement} svgEl
-   * @param {InstanceType<typeof window.FP.model.DataStore>} store
-   * @param {InstanceType<typeof window.FP.StateMachine>} sm
-   * @param {InstanceType<typeof window.FP.DrawController>} draw
-   * @param {InstanceType<typeof window.FP.SelectionController>} [selection]
-   * @param {InstanceType<typeof window.FP.SlidingGateController>} [slidingGate]
-   * @param {InstanceType<typeof window.FP.PostsController>} [posts]
-   * @param {InstanceType<typeof window.FP.ShapesController>} [shapesCtrl] - розділ 17
-   */
   constructor(map, svgEl, store, sm, draw, selection = null, slidingGate = null, posts = null, shapesCtrl = null) {
     this.map = map;
     this.svg = svgEl;
@@ -33,8 +12,6 @@ window.FP.EditorOverlay = class EditorOverlay {
     this.posts = posts;
     this.shapesCtrl = shapesCtrl;
 
-    // Шари, у порядку відображення (розділ 19.1: 2 об'єкти ділянки — нижче
-    // паркану; 3 паркан+ворота+стовпи, 4 розміри, 5 вузли, 6 preview)
     this.gShapes = this._makeGroup('layer-shapes hit-layer');
     this.gFence = this._makeGroup('layer-fence');
     this.gPosts = this._makeGroup('layer-posts');
@@ -45,7 +22,6 @@ window.FP.EditorOverlay = class EditorOverlay {
 
     this._initShapeRenderers();
 
-    // Перерендер при будь-якому русі/зумі карти — аналог draw() у Google OverlayView
     map.on('move zoom', () => this.render());
     map.on('moveend zoomend', () => this.render());
   }
@@ -57,7 +33,6 @@ window.FP.EditorOverlay = class EditorOverlay {
     return g;
   }
 
-  /** Повний перерендер SVG-шару з поточних даних стору + live-preview */
   render() {
     this._clear(this.gShapes);
     this._clear(this.gFence);
@@ -97,8 +72,6 @@ window.FP.EditorOverlay = class EditorOverlay {
       this._renderSlidingGateDraftPreview();
     }
 
-    // SNP-001: під час перетягування вільного кінця — жовтий ореол на найближчій цілі.
-    // Для T-стику (segment) ціль — це точка проекції на сегмент, а не існуючий Point.
     if (this.selection && this.selection.session && this.selection.activeSnapCandidate) {
       const candidate = this.selection.activeSnapCandidate;
       if (candidate.kind === 'segment' || candidate.kind === 'object') {
@@ -117,7 +90,6 @@ window.FP.EditorOverlay = class EditorOverlay {
   _renderRun(run) {
     const points = this.store.getRunPoints(run.id);
     const isSelected = this.sm.state.selectedRunId === run.id;
-    // LOOP-001/002: замкнений контур — додатковий сегмент від останньої точки до першої
     const segCount = run.closed ? points.length : points.length - 1;
 
     for (let i = 0; i < segCount; i += 1) {
@@ -144,11 +116,6 @@ window.FP.EditorOverlay = class EditorOverlay {
     }
   }
 
-  /**
-   * LINE posts — розділ 16.1/PST-001. Дрібні непретягувані крапки,
-   * перераховані наживо з довжини сегмента й модуля. PST-003: приховуються
-   * перемикачем Show/Hide posts, не впливаючи на самі вузли лінії.
-   */
   _renderLinePosts(run) {
     if (!this.sm.state.showAutoPosts) return;
     const points = this.store.getRunPoints(run.id);
@@ -161,16 +128,10 @@ window.FP.EditorOverlay = class EditorOverlay {
       el.setAttribute('width', 5);
       el.setAttribute('height', 5);
       el.setAttribute('class', 'post post-line');
-      // PST-001: не handle — свідомо без pointer-events і без selection-обробників.
       this.gPosts.appendChild(el);
     }
   }
 
-  /**
-   * Additional post — розділ 16.1/розділ 5. Той самий розмір, що й END/CORNER
-   * (16.1 таблиця), вибирається і видаляється як звичайний об'єкт (8.1),
-   * але не є handle сегмента лінії.
-   */
   _renderAdditionalPost(post) {
     const geo = this.posts.getGeo(post);
     if (!geo) return;
@@ -186,12 +147,6 @@ window.FP.EditorOverlay = class EditorOverlay {
     if (this.selection) this.selection.attachObjectHandlers(el, post.id);
   }
 
-  /**
-   * Розпашні ворота — розділ 13.2 ТЗ.
-   * дві стійки по краях проєму; одна стулка; тонка дуга відкривання;
-   * окрема розмірна лінія ширини (GAT-001/DIM-006); підпис не перевертається
-   * (DIM-004 діє й тут).
-   */
   _renderSwingGate(gate) {
     const a = window.FP.geo.toScreen(gate.postAGeo);
     const b = window.FP.geo.toScreen(gate.postBGeo);
@@ -200,7 +155,6 @@ window.FP.EditorOverlay = class EditorOverlay {
     const dist = Math.hypot(dx, dy) || 1e-6;
     const ux = dx / dist;
     const uy = dy / dist;
-    // перпендикуляр: 'right' — за годинниковою від напрямку A->B
     const px = -uy;
     const py = ux;
 
@@ -213,12 +167,11 @@ window.FP.EditorOverlay = class EditorOverlay {
       x: hingePost.x + px * swingSign * dist,
       y: hingePost.y + py * swingSign * dist,
     };
-    const closedEnd = otherPost; // напрямок "закрито" — вздовж лінії, до іншої стійки
+    const closedEnd = otherPost;
 
     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     group.setAttribute('class', isSelected ? 'gate selected' : 'gate');
 
-    // дуга відкривання (тонка, від закритого положення до відкритого)
     const arcPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     const sweepFlag = swingSign > 0 ? 1 : 0;
     arcPath.setAttribute(
@@ -228,7 +181,6 @@ window.FP.EditorOverlay = class EditorOverlay {
     arcPath.setAttribute('class', 'gate-arc');
     group.appendChild(arcPath);
 
-    // стулка — від стійки петель до відкритого положення
     const leaf = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     leaf.setAttribute('x1', hingePost.x);
     leaf.setAttribute('y1', hingePost.y);
@@ -237,7 +189,6 @@ window.FP.EditorOverlay = class EditorOverlay {
     leaf.setAttribute('class', 'gate-leaf');
     group.appendChild(leaf);
 
-    // дві стійки (GAT-001)
     for (const post of [a, b]) {
       const postEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
       postEl.setAttribute('x', post.x - 4);
@@ -251,16 +202,9 @@ window.FP.EditorOverlay = class EditorOverlay {
     this.gGates.appendChild(group);
     if (this.selection) this.selection.attachObjectHandlers(group, gate.id);
 
-    // GAT-002/DIM-006: окремий розмір ширини між стійками, не замінює розмір прольоту
     this._dimensionLabel(a, b, gate.widthM, false, 'gate-dimension');
   }
 
-  /**
-   * Розсувні ворота — розділ 14 ТЗ.
-   * SLD-003: дві основні стійки видно завжди. Полотно показане в закритому
-   * положенні (лінія між стійками), і пунктирна pocket-zone зі стрілкою —
-   * куди воно йде у відкритому положенні (14.1 крок 5, SLD-002).
-   */
   _renderSlidingGate(gate) {
     const a = window.FP.geo.toScreen(gate.postAGeo);
     const b = window.FP.geo.toScreen(gate.postBGeo);
@@ -281,7 +225,6 @@ window.FP.EditorOverlay = class EditorOverlay {
     const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     group.setAttribute('class', isSelected ? 'gate sliding-gate selected' : 'gate sliding-gate');
 
-    // полотно в закритому положенні — лінія між двома стійками
     const panel = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     panel.setAttribute('x1', a.x);
     panel.setAttribute('y1', a.y);
@@ -290,7 +233,6 @@ window.FP.EditorOverlay = class EditorOverlay {
     panel.setAttribute('class', 'sliding-gate-panel');
     group.appendChild(panel);
 
-    // pocket-zone — пунктирна ділянка, куди йде полотно (SLD-002)
     const pocket = document.createElementNS('http://www.w3.org/2000/svg', 'line');
     pocket.setAttribute('x1', pocketStart.x);
     pocket.setAttribute('y1', pocketStart.y);
@@ -299,10 +241,8 @@ window.FP.EditorOverlay = class EditorOverlay {
     pocket.setAttribute('class', 'sliding-gate-pocket');
     group.appendChild(pocket);
 
-    // стрілка напрямку в кінці pocket-zone
     this._appendArrowhead(group, pocketEnd, ux * dirSign, uy * dirSign);
 
-    // дві стійки (SLD-003)
     for (const post of [a, b]) {
       const postEl = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
       postEl.setAttribute('x', post.x - 4);
@@ -316,11 +256,9 @@ window.FP.EditorOverlay = class EditorOverlay {
     this.gGates.appendChild(group);
     if (this.selection) this.selection.attachObjectHandlers(group, gate.id);
 
-    // SLD-001: одне точне значення, без діапазонів
     this._dimensionLabel(a, b, gate.widthM, false, 'gate-dimension');
   }
 
-  /** Невелика трикутна стрілка в кінці pocket-zone, вздовж напрямку (dirX, dirY) */
   _appendArrowhead(group, tip, dirX, dirY) {
     const size = 7;
     const backX = tip.x - dirX * size;
@@ -336,7 +274,6 @@ window.FP.EditorOverlay = class EditorOverlay {
     group.appendChild(arrow);
   }
 
-  /** Живий preview малювання розсувних воріт по двох точках (14.1) */
   _renderSlidingGateDraftPreview() {
     const preview = this.slidingGate.onPointerMove(this.slidingGate.livePreviewGeo);
     if (!preview) return;
@@ -355,10 +292,6 @@ window.FP.EditorOverlay = class EditorOverlay {
     this._dimensionLabel(a, b, preview.lengthMeters, true);
   }
 
-  /**
-   * Розділ 17: об'єкти ділянки — top-view символи, нижче лінії паркану.
-   * Реєстр рендерерів по типу, ініціалізується один раз у конструкторі.
-   */
   _initShapeRenderers() {
     this._shapeRenderers = {
       house: (group, shape, geo) => {
@@ -374,7 +307,6 @@ window.FP.EditorOverlay = class EditorOverlay {
       arbor: (group, shape, geo) => {
         const corners = this._shapeRectCorners(geo, shape.widthM, shape.heightM, shape.rotationDeg);
         this._appendPolygon(group, corners, 'shape-body shape-arbor-body');
-        // хрестова решітка — top-view ознака перголи/арбору
         this._appendLine(group, corners[0], corners[2], 'shape-arbor-lattice');
         this._appendLine(group, corners[1], corners[3], 'shape-arbor-lattice');
       },
@@ -402,7 +334,6 @@ window.FP.EditorOverlay = class EditorOverlay {
         el.setAttribute('height', 10);
         el.setAttribute('class', 'shape-body shape-mailbox-body');
         group.appendChild(el);
-        // маленький "прапорець" конверта — top-view ознака поштової скриньки
         const flag = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
         flag.setAttribute(
           'points',
@@ -423,7 +354,6 @@ window.FP.EditorOverlay = class EditorOverlay {
     };
   }
 
-  /** 4 екранні кути прямокутника widthM x heightM з центром у geo, обернені на rotationDeg */
   _shapeRectCorners(geo, widthM, heightM, rotationDeg) {
     const hw = widthM / 2;
     const hh = heightM / 2;
@@ -459,7 +389,6 @@ window.FP.EditorOverlay = class EditorOverlay {
     return el;
   }
 
-  /** Один об'єкт ділянки (розділ 17) — вибирає рендерер за типом, OBJ-002/OBJ-003 */
   _renderShape(shape) {
     const geo = this.shapesCtrl.getGeo(shape);
     if (!geo) return;
@@ -497,7 +426,6 @@ window.FP.EditorOverlay = class EditorOverlay {
     return el;
   }
 
-  /** SNP-001: жовтий ореол навколо найближчої цілі прилипання під час drag */
   _renderSnapHalo(geoPosition) {
     const screen = window.FP.geo.toScreen(geoPosition);
     const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -508,7 +436,6 @@ window.FP.EditorOverlay = class EditorOverlay {
     this.gPreview.appendChild(el);
   }
 
-  /** DIM-005: метри з одним десятковим знаком. DIM-004: текст ніколи не догори ногами. */
   _dimensionLabel(a, b, lengthMeters, isPreview = false, extraClass = '') {
     const midX = (a.x + b.x) / 2;
     const midY = (a.y + b.y) / 2;

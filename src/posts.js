@@ -1,46 +1,14 @@
-/**
- * posts.js
- * Стовпи та кріплення — розділ 16 ТЗ.
- *
- * END post і CORNER post (16.1) — це вже існуючі Point (вільний кінець і
- * внутрішній/з'єднаний вузол відповідно); окремої сутності для них не
- * заводимо, вони й так рендеряться і перетягуються як node (SEL-003/SEL-004,
- * AT-17: "END/CORNER залишаються вузлами").
- * Gate posts (16.1) — вже рендеряться в overlay.js як частина Gate.
- *
- * LINE post (PST-001) — автоматична проміжна точка вздовж сегмента.
- * НЕ зберігається в моделі: рахується наживо з довжини сегмента й модуля
- * (config.moduleMeters), щоб гарантовано не стати handle і не "їздити"
- * окремо від лінії. Крок модуля — налаштування проєкту (розділ 24:
- * "Комерційний panel module... значення повинно приходити з конфігурації"),
- * а не хардкод.
- *
- * Additional post (16.1, розділ 5) — окремий об'єкт (model.Post), який
- * користувач ставить вручну на лінію. Прив'язка зберігається як анкер
- * (anchorPointAId/anchorPointBId + t), щоб стовп слідував за прогоном при
- * його переміщенні (MOV-003) — так само, як мали б поводитися конверт/арбор.
- */
-
 window.FP = window.FP || {};
 
 window.FP.PostsController = class PostsController {
-  /** @param {InstanceType<typeof window.FP.model.DataStore>} store */
   constructor(store) {
     this.store = store;
-    // DRW-003 дух правила: крок — налаштування, а не розкиданий по коду хардкод.
     this.config = {
-      moduleMeters: 2.4, // розділ 24: "У макеті 2,4 m", підлягає конфігурації продукту
-      edgeMarginMeters: 0.3, // не ставити LINE post впритул до END/CORNER
+      moduleMeters: 2.4,
+      edgeMarginMeters: 0.3,
     };
   }
 
-  /**
-   * PST-001: перерахувати позиції автоматичних LINE posts для прогону
-   * наживо з поточної геометрії. Нічого не зберігає й не мутує.
-   * @param {object} run
-   * @param {object[]} points - store.getRunPoints(run.id), впорядковано
-   * @returns {{lat:number,lng:number}[]}
-   */
   computeLinePosts(run, points) {
     const positions = [];
     const { moduleMeters, edgeMarginMeters } = this.config;
@@ -62,12 +30,6 @@ window.FP.PostsController = class PostsController {
     return positions;
   }
 
-  /**
-   * Поставити Additional post на існуючий сегмент лінії (16.1/розділ 5).
-   * Клік проєктується на сегмент і затискається в межах невеликого відступу
-   * від країв, щоб пост не наліз на END/CORNER.
-   * @returns {{success:boolean, message?:string, postId?:string}}
-   */
   placeOnSegment(runId, pointAId, pointBId, clickGeo) {
     const pointA = this.store.points.get(pointAId);
     const pointB = this.store.points.get(pointBId);
@@ -96,11 +58,6 @@ window.FP.PostsController = class PostsController {
     return { success: true, postId: post.id };
   }
 
-  /**
-   * Поставити Additional post біля стійки воріт (SLD-003: "окремо біля лівої
-   * або правої стійки"). Зсув перпендикулярно до осі воріт, щоб пост не
-   * зливався з самою стійкою.
-   */
   placeNearGatePost(gateId, side) {
     const gate = this.store.gates.get(gateId);
     if (!gate || (side !== 'A' && side !== 'B')) {
@@ -118,7 +75,6 @@ window.FP.PostsController = class PostsController {
     return { success: true, postId: post.id };
   }
 
-  /** Поточна екранно-незалежна geo-позиція поста (делегує в model.js) */
   getGeo(post) {
     return this.store.getPostGeo(post);
   }

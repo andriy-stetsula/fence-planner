@@ -37,18 +37,14 @@
 
   <div id="map-wrap">
     <div id="map"></div>
-    <!-- SVG overlay, synced 1:1 with the map viewport in overlay.js -->
     <svg id="editor-svg" xmlns="http://www.w3.org/2000/svg"></svg>
-    <!-- Finish run: fixed corner, per DRW-005 / UI-002, never follows the cursor -->
     <button id="btn-finish-run" class="floating-corner-btn" hidden>Finish run (Enter)</button>
-    <!-- length input popover for exact segment length editing (7.3) -->
     <div id="length-popover" class="popover" hidden>
       <input id="length-input" type="number" step="0.1" min="0.1" />
       <span>m</span>
       <button id="length-apply">✓</button>
       <button id="length-close">✕</button>
     </div>
-    <!-- joint context panel: lock/unlock, 90°, exact angle (розділ 10, JNT-002; розділ 9.3; LOOP-003) -->
     <div id="joint-popover" class="popover" hidden>
       <button id="joint-lock" title="Роз'єднати стик / відкрити контур (L)">🔓</button>
       <button id="joint-90">90°</button>
@@ -57,19 +53,16 @@
       <button id="joint-angle-apply">✓</button>
       <button id="joint-close">✕</button>
     </div>
-    <!-- gate arrow controls: only ← → ↑ ↓, no text labels (13.3) -->
     <div id="gate-popover" class="popover gate-popover" hidden>
       <button data-gate-action="hinge-a" title="Петлі: стійка A">←</button>
       <button data-gate-action="hinge-b" title="Петлі: стійка B">→</button>
       <button data-gate-action="swing-left" title="Відкриття: ліворуч">↑</button>
       <button data-gate-action="swing-right" title="Відкриття: праворуч">↓</button>
     </div>
-    <!-- sliding gate direction controls: two arrows along the gate axis (SLD-002) -->
     <div id="sliding-gate-popover" class="popover gate-popover" hidden>
       <button data-slide-action="left" title="Полотно йде ліворуч">←</button>
       <button data-slide-action="right" title="Полотно йде праворуч">→</button>
     </div>
-    <!-- resize popover for resizable site objects (house/pool) — розділ 17.1/OBJ-003 -->
     <div id="shape-resize-popover" class="popover" hidden>
       <input id="shape-width-input" type="number" step="0.1" min="0.1" style="width:56px" title="Ширина, м" />
       <span>×</span>
@@ -81,21 +74,6 @@
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="src/model.js"></script>
-  <script src="src/geo.js"></script>
-  <script src="src/history.js"></script>
-  <script src="src/state.js"></script>
-  <script src="src/draw.js"></script>
-  <script src="src/snap.js"></script>
-  <script src="src/joint.js"></script>
-  <script src="src/gap.js"></script>
-  <script src="src/gate.js"></script>
-  <script src="src/slidingGate.js"></script>
-  <script src="src/posts.js"></script>
-  <script src="src/shapes.js"></script>
-  <script src="src/select.js"></script>
-  <script src="src/overlay.js"></script>
-  <script src="src/keyboard.js"></script>
-  <script src="src/main.js"></script>
+  <script type="module" src="src/main.js"></script>
 </body>
 </html>

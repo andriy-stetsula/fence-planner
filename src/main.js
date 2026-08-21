@@ -1,24 +1,11 @@
-/**
- * main.js (Leaflet версія)
- * Точка входу. Ініціалізує Leaflet-карту (OpenStreetMap tiles, без API-ключа
- * і без білінгу), збирає всі модулі докупи, підключає toolbar і pointer-обробники.
- */
-
 function initMap() {
   const map = L.map('map', {
-    center: [49.593, 23.482], // Дрогобич, як приклад стартової точки
+    center: [49.593, 23.482],
     zoom: 19,
     maxZoom: 22,
-    zoomControl: false, // власний контрол додаємо нижче в іншому куті — див. коментар
+    zoomControl: false,
   });
 
-  // Контекстні попапи (joint/gate/shape-resize) при близькості вибраного елемента
-  // до краю карти притискаються саме до лівого верхнього кута (Math.max(8, ...)
-  // у відповідних update*Popover функціях нижче) — це той самий кут, де Leaflet
-  // за замовчуванням малює свій zoom control (+/-). "Finish run" займає правий
-  // нижній (style.css .floating-corner-btn), тому для zoom control лишається
-  // вільний лівий нижній кут — переносимо його туди, щоб кути фізично
-  // ніколи не могли накластись одне на одне.
   L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -38,7 +25,7 @@ function initMap() {
   const slidingGateCtrl = new window.FP.SlidingGateController(store, sm, history);
   const postsCtrl = new window.FP.PostsController(store);
   const shapesCtrl = new window.FP.ShapesController(store);
-  snap.setShapesController(shapesCtrl); // 17.4: найнижчий тир прилипання
+  snap.setShapesController(shapesCtrl);
 
   window.FP.geo.bindMap(map);
 
@@ -62,11 +49,6 @@ function initMap() {
     try {
       overlay.render();
       updateStatusText();
-      // UI-005/GEN-003: гарантовано ховаємо всі контекстні панелі перед тим,
-      // як кожна з чотирьох функцій нижче вирішить, чи показати себе заново.
-      // Друга лінія захисту (перша — select.js тепер оновлює selection після
-      // drag): навіть якщо десь лишиться застаріле selectedObjectId, дві
-      // панелі одночасно більше показані не будуть.
       jointPopover.hidden = true;
       gatePopover.hidden = true;
       slidingGatePopover.hidden = true;
@@ -88,12 +70,6 @@ function initMap() {
       `Прогонів: ${runsCount} · Точок: ${pointsCount} · Undo: ${history.undoStack.length} · Redo: ${history.redoStack.length}`;
   }
 
-  /**
-   * EditorState (draftRunId, selection) НЕ входить у DataStore.snapshot(),
-   * тому після Undo/Redo потрібно перевірити, чи досі існує прогін/елемент,
-   * на який посилається поточний стан редактора, і скинути посилання,
-   * якщо він був видалений відкатом.
-   */
   function resyncEditorStateAfterHistoryChange() {
     const s = sm.state;
     if (s.draftRunId && !store.runs.has(s.draftRunId)) {
@@ -116,7 +92,6 @@ function initMap() {
     }
   }
 
-  // --- Toolbar wiring ---
   const toolButtons = document.querySelectorAll('.tool-btn');
   toolButtons.forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -153,14 +128,9 @@ function initMap() {
   });
 
   function updateFinishButton() {
-    // UI-002: кнопка видима лише поки триває малювання прогону
     finishBtn.hidden = !draw.isDrafting();
   }
 
-  // --- Map pointer wiring ---
-  // PTR-003: клік по карті в режимі select не повинен нічого малювати —
-  // панорамування Leaflet лишається штатним, бо ми не викликаємо
-  // L.DomEvent.stop() і не блокуємо взаємодію з картою.
   map.on('click', (e) => {
     if (sm.state.activeTool === 'draw') {
       const geoPoint = { lat: e.latlng.lat, lng: e.latlng.lng };
@@ -170,7 +140,6 @@ function initMap() {
       return;
     }
     if (sm.state.activeTool === 'slidingGate') {
-      // 14.1: перший клік — стійка, другий — напрямок і завершення
       const geoPoint = { lat: e.latlng.lat, lng: e.latlng.lng };
       const widthInput = document.getElementById('sliding-gate-width-input');
       const rawWidth = widthInput.value.trim();
@@ -183,7 +152,6 @@ function initMap() {
       return;
     }
     if (sm.state.activeTool === 'shapes') {
-      // 5/17: "Розміщення об'єкта" — наступний клік по карті ставить обраний тип
       const geoPoint = { lat: e.latlng.lat, lng: e.latlng.lng };
       const type = document.getElementById('shape-type-select').value;
       history.beginAction();
@@ -199,8 +167,6 @@ function initMap() {
       return;
     }
     if (sm.state.activeTool === 'select') {
-      // Клік по порожній карті (не по лінії/вузлу — ті самі мають stopPropagation)
-      // знімає вибір, UI-005.
       selection.handleEmptyMapClick();
     }
   });
@@ -217,9 +183,6 @@ function initMap() {
     }
   });
 
-  // Коли активний інструмент "draw", "gap" або "gate*" — тимчасово вимикаємо
-  // перетягування карти, щоб клік по карті не одночасно і панорамував,
-  // і малював/різав/ставив ворота (PTR-003).
   sm.onChange((state) => {
     if (
       state.activeTool === 'draw' ||
@@ -254,7 +217,6 @@ function initMap() {
     rerender();
   }
 
-  // 13.1: розміщення розпашних воріт на існуючій лінії
   function handleGateLineClick(runId, pointAId, pointBId, clickGeo) {
     const widthInput = document.getElementById('gate-width-input');
     const widthMeters = parseFloat(widthInput.value);
@@ -275,7 +237,6 @@ function initMap() {
     rerender();
   }
 
-  // 16.1/розділ 5: розміщення Additional post на існуючій лінії
   function handlePostLineClick(runId, pointAId, pointBId, clickGeo) {
     history.beginAction();
     const result = postsCtrl.placeOnSegment(runId, pointAId, pointBId, clickGeo);
@@ -289,7 +250,6 @@ function initMap() {
     rerender();
   }
 
-  // PST-003: Show/Hide posts — перемикач видимості лише автоматичних LINE posts
   const togglePostsBtn = document.getElementById('btn-toggle-posts');
   function updateTogglePostsButton() {
     togglePostsBtn.classList.toggle('active', sm.state.showAutoPosts);
@@ -302,7 +262,6 @@ function initMap() {
   sm.onChange(updateTogglePostsButton);
   updateTogglePostsButton();
 
-  // --- Keyboard wiring ---
   window.FP.bindKeyboard({
     sm,
     draw,
@@ -332,14 +291,11 @@ function initMap() {
       onDelete: () => {
         selection.deleteSelected();
       },
-      onDuplicate: () => {
-        /* TODO: Duplicate, розділ 5 */
-      },
+      onDuplicate: () => {},
     },
   });
 
-  // --- Точна довжина сегмента (розділ 7.3) ---
-  let activeLengthSegment = null; // { pointAId, pointBId }
+  let activeLengthSegment = null;
   const lengthPopover = document.getElementById('length-popover');
   const lengthInput = document.getElementById('length-input');
 
@@ -354,7 +310,6 @@ function initMap() {
     );
     lengthInput.value = currentMeters.toFixed(1);
 
-    // Позиціонуємо popover біля середини сегмента, обмежуючи в межах viewport (UI-003)
     const a = window.FP.geo.toScreen(pointA.geographicPosition);
     const b = window.FP.geo.toScreen(pointB.geographicPosition);
     const mapWrap = document.getElementById('map-wrap').getBoundingClientRect();
@@ -381,7 +336,7 @@ function initMap() {
     if (!activeLengthSegment) return;
     const desired = parseFloat(lengthInput.value);
     if (Number.isNaN(desired) || desired <= 0) {
-      return; // розділ 22: неприпустима довжина — не змінювати геометрію
+      return;
     }
 
     const { pointAId, pointBId } = activeLengthSegment;
@@ -393,14 +348,12 @@ function initMap() {
     const bJointed = !!pointB.jointId;
 
     if (aJointed && bJointed) {
-      // 7.3: обидва кінці зафіксовані — не змінювати геометрію автоматично
       alert('Обидва кінці сегмента зафіксовані. Спочатку роз\'єднайте один стик (клавіша L).');
       return;
     }
 
     history.beginAction();
     if (bJointed && !aJointed) {
-      // Рухається вільна сторона — тут це A
       const newPos = window.FP.geo.pointAtDistanceAlongDirection(
         pointB.geographicPosition,
         pointA.geographicPosition,
@@ -408,7 +361,6 @@ function initMap() {
       );
       store.movePoint(pointAId, newPos);
     } else {
-      // За замовчуванням: A лишається на місці, рухається B
       const newPos = window.FP.geo.pointAtDistanceAlongDirection(
         pointA.geographicPosition,
         pointB.geographicPosition,
@@ -434,21 +386,12 @@ function initMap() {
     }
   });
 
-  // --- Контекстна панель стику: замок, 90°, точний кут (розділ 10 JNT-002; 9.3; LOOP-003) ---
   const jointPopover = document.getElementById('joint-popover');
   const jointAngleInput = document.getElementById('joint-angle-input');
   const jointLockBtn = document.getElementById('joint-lock');
   const joint90Btn = document.getElementById('joint-90');
   const jointAngleApplyBtn = document.getElementById('joint-angle-apply');
 
-  /**
-   * Панель стику показується у двох випадках:
-   * 1. Вибраний вузол з'єднаний (jointId) з іншим прогоном (endpoint-to-endpoint
-   *    або T-стик, SNP-004) — лише кнопка замка (9.3), 90°/кут не рахуємо для
-   *    міжпрогінного з'єднання.
-   * 2. Вибраний "простий" внутрішній кут одного прогону, ВКЛЮЧНО з кутом
-   *    замкненого контуру (LOOP-003) — замок відкриває контур, плюс 90°/кут.
-   */
   function updateJointPopover() {
     const pointId = sm.state.selectedPointId;
     if (!pointId) {
@@ -463,20 +406,17 @@ function initMap() {
     const run = store.runs.get(point.runId);
     const isCrossJoint = !!point.jointId;
     const isLoopCorner = !!(run && run.closed);
-    const corner = jointCtrl.getSimpleCorner(pointId); // null для isCrossJoint (за дизайном)
+    const corner = jointCtrl.getSimpleCorner(pointId);
 
     if (!isCrossJoint && !corner) {
-      // Ні з'єднаний стик, ні внутрішній кут (вільний кінець без зв'язку) — нічого показувати
       jointPopover.hidden = true;
       return;
     }
 
-    jointLockBtn.hidden = false; // показуємо завжди коли панель видима (JNT-002)
+    jointLockBtn.hidden = false;
     jointLockBtn.textContent = isCrossJoint || isLoopCorner ? '🔒' : '🔓';
-    jointLockBtn.disabled = !isCrossJoint && !isLoopCorner; // немає що розривати для звичайного кута
+    jointLockBtn.disabled = !isCrossJoint && !isLoopCorner;
 
-    // JNT-006 дух правила: 90°/точний кут лише для простого 2-гілкового кута,
-    // не для міжпрогінного з'єднання (там ще немає reference/moving branch)
     const showAngle = !!corner && !isCrossJoint;
     joint90Btn.hidden = !showAngle;
     jointAngleInput.hidden = !showAngle;
@@ -498,12 +438,6 @@ function initMap() {
     jointPopover.hidden = false;
   }
 
-  /**
-   * Кнопка замка / клавіша L (розділ 20):
-   * - вибраний з'єднаний стик (jointId) -> роз'єднати (9.3)
-   * - вибраний кут ЗАМКНЕНОГО контуру -> відкрити контур у цьому куті (LOOP-003)
-   * В обох випадках стара ціль тимчасово блокується від резнапу (9.3/LOOP-004).
-   */
   function handleToggleLock() {
     const pointId = sm.state.selectedPointId;
     if (!pointId) return;
@@ -541,7 +475,7 @@ function initMap() {
     const pointId = sm.state.selectedPointId;
     if (!pointId) return;
     const deg = parseInt(jointAngleInput.value, 10);
-    if (Number.isNaN(deg) || deg < 1 || deg > 179) return; // JNT-004: 1-179°
+    if (Number.isNaN(deg) || deg < 1 || deg > 179) return;
     history.beginAction();
     jointCtrl.setAngleDeg(pointId, deg);
     history.commitAction();
@@ -553,9 +487,6 @@ function initMap() {
     rerender();
   });
 
-  // --- Контекстна панель воріт: стрілки керування (розділ 13.3) ---
-  // Без текстових підписів — лише ← → ↑ ↓. ← → міняють сторону петель
-  // вздовж лінії (стійка A/B). ↑ ↓ міняють сторону відкриття поперек лінії.
   const gatePopover = document.getElementById('gate-popover');
   const gateArrowButtons = gatePopover.querySelectorAll('button[data-gate-action]');
 
@@ -608,7 +539,6 @@ function initMap() {
     });
   });
 
-  // --- Контекстна панель розсувних воріт: напрямок відкату (SLD-002) ---
   const slidingGatePopover = document.getElementById('sliding-gate-popover');
   const slidingGateButtons = slidingGatePopover.querySelectorAll('button[data-slide-action]');
 
@@ -651,7 +581,6 @@ function initMap() {
     });
   });
 
-  // --- Контекстна панель ресайзу об'єкта ділянки: house/pool (розділ 17.1/OBJ-003) ---
   const shapeResizePopover = document.getElementById('shape-resize-popover');
   const shapeWidthInput = document.getElementById('shape-width-input');
   const shapeHeightInput = document.getElementById('shape-height-input');
@@ -669,8 +598,6 @@ function initMap() {
       return;
     }
 
-    // Захист: якщо widthM/heightM з якоїсь причини відсутні — беремо дефолт типу,
-    // а не показуємо порожнє поле (розділ 22: дані завжди мають бути коректні).
     shapeWidthInput.value = (shape.widthM || cfg.widthM).toFixed(1);
     shapeHeightInput.value = (shape.heightM || cfg.heightM).toFixed(1);
 

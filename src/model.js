@@ -1,30 +1,15 @@
-/**
- * model.js
- * Мінімальна модель даних — Додаток A ТЗ.
- * Стабільні ID (HIS-004): ідентифікатори видаються один раз і ніколи
- * не залежать від позиції елемента в масиві.
- */
-
 let __idCounter = 0;
 function nextId(prefix) {
   __idCounter += 1;
   return `${prefix}_${Date.now().toString(36)}_${__idCounter}`;
 }
 
-/** @typedef {{ lat: number, lng: number }} GeoPoint */
-
 class Point {
-  /**
-   * @param {GeoPoint} geographicPosition
-   * @param {string} runId
-   */
   constructor(geographicPosition, runId) {
     this.id = nextId('pt');
     this.geographicPosition = geographicPosition;
     this.runId = runId;
-    /** 'end' | 'corner' */
     this.role = 'end';
-    /** id стику, якщо точка з'єднана з іншим прогоном */
     this.jointId = null;
     this.linkedRunId = null;
     this.linkedPointId = null;
@@ -39,13 +24,11 @@ class Run {
   constructor() {
     this.id = nextId('run');
     this.closed = false;
-    /** @type {string[]} впорядкований список Point.id */
     this.pointIds = [];
     this.fenceStyle = 'default';
-    this.terrainMode = null; // 'raked' | 'stepdown' | null
+    this.terrainMode = null;
     this.stepDownCount = 0;
     this.rakeDirection = 'forward';
-    /** сторона, на якій зафіксовано активний живий розмір (DIM-001) */
     this.dimensionSide = null;
   }
 }
@@ -53,32 +36,13 @@ class Run {
 class Joint {
   constructor(memberPointIds) {
     this.jointId = nextId('joint');
-    this.memberPointIds = memberPointIds; // [pointId, pointId, ...]
+    this.memberPointIds = memberPointIds;
     this.state = 'joined';
-    // для простого стику з двох гілок:
-    this.referenceBranch = null; // pointId сторони, що лишається опорною
+    this.referenceBranch = null;
     this.movingBranch = null;
   }
 }
 
-/**
- * Gate — ворота/хвіртка, розділи 13 і 14 ТЗ.
- * postAGeo/postBGeo — дві структурні стійки (GAT-001/SLD-003: точна ширина).
- * type: 'swing' | 'sliding'.
- *
- * Для 'swing' (розділ 13):
- * hingeSide: 'A' | 'B' — на якій стійці петлі (стрілки ←/→, 13.3).
- * swingSide: 'left' | 'right' — у який бік від лінії відкривається стулка
- * (стрілки ↑/↓, 13.3). 'right' — за напрямком A->B, стулка повертає праворуч.
- *
- * Для 'sliding' (розділ 14):
- * slideDirection: 'left' | 'right' — у який бік уздовж осі воріт (за межі
- * стійки A чи стійки B) іде полотно у відкритому положенні (SLD-002).
- *
- * attachedRunBeforeId/attachedRunAfterId — прогони по обидва боки проєму,
- * якщо ворота стоять на лінії (13.1); null для standalone-об'єкта.
- * GAT-004: замка немає — стан видно за вирівнюванням з лінією.
- */
 class Gate {
   constructor({ type = 'swing', postAGeo, postBGeo, widthM, attachedRunBeforeId = null, attachedRunAfterId = null }) {
     this.id = nextId('gate');
@@ -89,7 +53,7 @@ class Gate {
     this.attachedRunBeforeId = attachedRunBeforeId;
     this.attachedRunAfterId = attachedRunAfterId;
     if (type === 'sliding') {
-      this.slideDirection = 'right'; // SLD-002
+      this.slideDirection = 'right';
     } else {
       this.hingeSide = 'A';
       this.swingSide = 'right';
@@ -97,22 +61,10 @@ class Gate {
   }
 }
 
-/**
- * Post — "Additional post" (розділ 16 ТЗ), стовп, який користувач ставить
- * вручну на лінію або біля стійки воріт. НЕ використовується для END/CORNER
- * (це вже існуючі Point з role 'end'/внутрішній вузол) і НЕ для LINE posts
- * (ті рахуються на льоту з довжини/модуля, PST-001, і в моделі не зберігаються).
- *
- * Прив'язка до лінії зберігається як анкер (anchorPointAId/anchorPointBId + t,
- * параметр 0..1 вздовж сегмента), а не застигла geo-координата — так стовп
- * автоматично слідує за прогоном при його переміщенні (MOV-003).
- * Прив'язка до стійки воріт — attachedGateId/gateSide, статична offset-точка
- * (ворота самі поки не рухаються після створення, як і решта коду).
- */
 class Post {
   constructor({ geo = null, attachedRunId = null, anchorPointAId = null, anchorPointBId = null, t = null, attachedGateId = null, gateSide = null }) {
     this.id = nextId('post');
-    this.geo = geo; // використовується лише коли пост не прив'язаний до лінії/воріт
+    this.geo = geo;
     this.attachedRunId = attachedRunId;
     this.anchorPointAId = anchorPointAId;
     this.anchorPointBId = anchorPointBId;
@@ -122,23 +74,6 @@ class Post {
   }
 }
 
-/**
- * Shape — об'єкт ділянки (розділ 17 ТЗ): будинок, дерево, басейн, арбор,
- * поштова скринька (mailbox/конверт), стовп ділянки (parcel pillar).
- * Немає структурного зв'язку з парканом — це не Run/Point, тому геометрія
- * зберігається окремо.
- *
- * geo — вільна позиція (центр об'єкта), використовується лише коли объект
- * НЕ прив'язаний до сегмента лінії паркану.
- * 17.4: anchorable-типи (mailbox), поставлені близько до лінії, зберігають
- * анкер (anchorRunId/anchorPointAId/anchorPointBId + t) так само, як
- * Additional post (розділ 16, MOV-003) — об'єкт "живо" слідує за прогоном
- * при його переміщенні. Ручне перетягування об'єкта знімає анкер
- * (DataStore.detachShape), як і видалення прив'язаного прогону.
- * widthM/heightM — габарити в метрах (OBJ-003: house/pool ресайзяться,
- * інші типи мають фіксований дефолтний розмір типу, розділ 17 shapes.js).
- * rotationDeg — орієнтація прямокутних типів (0 = вздовж довготи).
- */
 class Shape {
   constructor({
     type,
@@ -152,7 +87,7 @@ class Shape {
     t = null,
   }) {
     this.id = nextId('shape');
-    this.type = type; // 'house' | 'tree' | 'pool' | 'arbor' | 'mailbox' | 'parcelPillar'
+    this.type = type;
     this.geo = geo;
     this.widthM = widthM;
     this.heightM = heightM;
@@ -164,45 +99,32 @@ class Shape {
   }
 }
 
-/**
- * Editor state — єдине джерело правди про поточний стан UI.
- * Розділ 4 ТЗ: явний стан, щоб один клік не робив кілька речей одразу.
- */
 class EditorState {
   constructor() {
-    /** 'select' | 'draw' | 'drawSlidingGate' | 'placeObject' | 'dragging' | 'editNumber' */
     this.mode = 'select';
     this.activeTool = 'select';
 
     this.selectedRunId = null;
-    this.selectedSegmentId = null; // `${pointId}-${nextPointId}`
+    this.selectedSegmentId = null;
     this.selectedPointId = null;
     this.selectedObjectId = null;
 
-    this.draftRunId = null; // прогін, що зараз малюється
+    this.draftRunId = null;
     this.snapCandidate = null;
 
-    this.dragSession = null; // { targetType, targetId, startScreen, moved }
+    this.dragSession = null;
 
-    /** PST-003: перемикач видимості лише автоматичних LINE posts. */
     this.showAutoPosts = true;
   }
 }
 
-/** Глобальне сховище геометрії. У реальному проєкті — окремий store/reducer. */
 class DataStore {
   constructor() {
-    /** @type {Map<string, Run>} */
     this.runs = new Map();
-    /** @type {Map<string, Point>} */
     this.points = new Map();
-    /** @type {Map<string, Joint>} */
     this.joints = new Map();
-    /** @type {Map<string, Gate>} */
     this.gates = new Map();
-    /** @type {Map<string, Post>} розділ 16: Additional posts */
     this.posts = new Map();
-    /** @type {Map<string, Shape>} розділ 17: об'єкти ділянки */
     this.shapes = new Map();
   }
 
@@ -214,7 +136,6 @@ class DataStore {
 
   removeGate(gateId) {
     this.gates.delete(gateId);
-    // 8.1: пов'язані об'єкти не повинні залишатися з посиланням на неіснуючі ворота
     for (const post of this.posts.values()) {
       if (post.attachedGateId === gateId) {
         post.geo = this.getPostGeo(post);
@@ -234,11 +155,6 @@ class DataStore {
     this.posts.delete(postId);
   }
 
-  /**
-   * Поточна geo-позиція Additional post. Якщо прив'язаний до сегмента —
-   * рахується наживо з поточних координат anchor-точок (MOV-003: слідує
-   * за прогоном при переміщенні). Інакше — застигла geo.
-   */
   getPostGeo(post) {
     if (post.anchorPointAId && post.anchorPointBId) {
       const a = this.points.get(post.anchorPointAId);
@@ -263,11 +179,6 @@ class DataStore {
     this.shapes.delete(shapeId);
   }
 
-  /**
-   * 17.4: поточна geo-позиція об'єкта. Якщо прив'язаний до сегмента лінії —
-   * рахується наживо з поточних координат anchor-точок (як getPostGeo,
-   * MOV-003: слідує за прогоном при переміщенні). Інакше — застигла geo.
-   */
   getShapeGeo(shape) {
     if (shape.anchorPointAId && shape.anchorPointBId) {
       const a = this.points.get(shape.anchorPointAId);
@@ -282,7 +193,6 @@ class DataStore {
     return shape.geo;
   }
 
-  /** Ручне перетягування об'єкта знімає "живу" прив'язку до лінії, застигаючи в поточній geo. */
   detachShape(shapeId) {
     const shape = this.shapes.get(shapeId);
     if (!shape) return;
@@ -295,7 +205,6 @@ class DataStore {
     }
   }
 
-  /** Перемістити об'єкт у нову вільну geo-позицію (OBJ-003, розділ 17) */
   moveShape(shapeId, newGeo) {
     const shape = this.shapes.get(shapeId);
     if (!shape) return;
@@ -303,7 +212,6 @@ class DataStore {
     shape.geo = newGeo;
   }
 
-  /** OBJ-003: ресайз house/pool через попап ширини/довжини */
   resizeShape(shapeId, widthM, heightM) {
     const shape = this.shapes.get(shapeId);
     if (!shape) return;
@@ -335,8 +243,6 @@ class DataStore {
   removeRun(runId) {
     const run = this.runs.get(runId);
     if (!run) return;
-    // 8.1: додаткові стовпи, прив'язані до цього прогону, не повинні лишитися
-    // з битим runId/anchorPointId — застигаємо їхню останню позицію.
     for (const post of this.posts.values()) {
       if (post.attachedRunId === runId) {
         post.geo = this.getPostGeo(post);
@@ -346,7 +252,6 @@ class DataStore {
         post.t = null;
       }
     }
-    // 17.4/8.1: те саме для об'єктів ділянки, "живо" прив'язаних до цього прогону (mailbox)
     for (const shape of this.shapes.values()) {
       if (shape.anchorRunId === runId) {
         shape.geo = this.getShapeGeo(shape);
@@ -364,12 +269,6 @@ class DataStore {
     this.runs.delete(runId);
   }
 
-  /**
-   * LOOP-001/002 (розділ 11): замкнути прогін — протилежний вільний кінець
-   * "зливається" з тим, який зараз тягнули (draggedPointId), без дублюючої
-   * точки. pointIds лишається як цикл: рендер/логіка з'єднують останню
-   * точку з першою, коли run.closed === true.
-   */
   closeRun(runId, draggedPointId) {
     const run = this.runs.get(runId);
     if (!run) return false;
@@ -382,12 +281,6 @@ class DataStore {
     return true;
   }
 
-  /**
-   * LOOP-003/004: відкрити замкнений контур у вибраному куті. Вузол
-   * роздвоюється на дві незалежні точки в тій самій geo-позиції — нові
-   * перший і останній вільні кінці відкритого прогону.
-   * @returns {{firstId: string, lastId: string} | null}
-   */
   openRunAt(runId, pointId) {
     const run = this.runs.get(runId);
     if (!run || !run.closed) return null;
@@ -406,12 +299,6 @@ class DataStore {
     return { firstId: rotated[0], lastId: duplicate.id };
   }
 
-  /**
-   * Видалити один вузол з прогону (SEL-001/8.1 "вибрано вільний вузол").
-   * Сусідні сегменти автоматично з'єднуються (просто видаляється точка
-   * зі списку, лінія стає прямою між сусідами).
-   * Якщо в прогоні залишається < 2 точок — прогін видаляється цілком.
-   */
   removePoint(pointId) {
     const point = this.points.get(pointId);
     if (!point) return;
@@ -425,11 +312,6 @@ class DataStore {
     }
   }
 
-  /**
-   * Розділ 22 "Видалено ціль зв'язку": знімає посилання на видалену точку
-   * з іншої сторони Joint-у (endpoint-to-endpoint або T-стик, SNP-004) —
-   * партнер лишається вільним кінцем у своїй останній коректній позиції.
-   */
   _cleanupPointJoint(point) {
     if (!point.jointId) return;
     const joint = this.joints.get(point.jointId);
@@ -447,7 +329,6 @@ class DataStore {
     this.joints.delete(point.jointId);
   }
 
-  /** Зсунути всі точки прогону на geo-дельту (розділ 12, MOV-001) */
   moveRun(runId, deltaLat, deltaLng) {
     const run = this.runs.get(runId);
     if (!run) return;
@@ -460,14 +341,12 @@ class DataStore {
     }
   }
 
-  /** Перемістити один вузол у нову geo-позицію (розділ 8, SEL-003/SEL-004) */
   movePoint(pointId, newGeoPosition) {
     const point = this.points.get(pointId);
     if (!point) return;
     point.geographicPosition = newGeoPosition;
   }
 
-  /** Знімок для Undo/Redo (спрощений — повне клонування, розділ 21) */
   snapshot() {
     return {
       runs: new Map(
@@ -501,6 +380,5 @@ class DataStore {
   }
 }
 
-// експорт у глобальний неймспейс (проєкт без бандлера для простоти старту)
 window.FP = window.FP || {};
 window.FP.model = { Point, Run, Joint, Gate, Post, Shape, EditorState, DataStore, nextId };

@@ -76,11 +76,13 @@ window.FP.StateMachine = class StateMachine {
 
   enterEditNumber() {
     this.state.mode = 'editNumber';
+    document.body.classList.add('mode-editNumber');
     this._emit();
   }
 
   exitEditNumber() {
     this.state.mode = this.state.activeTool === 'draw' ? 'draw' : 'select';
+    document.body.classList.remove('mode-editNumber');
     this._emit();
   }
 

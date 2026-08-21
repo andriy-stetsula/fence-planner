@@ -1,325 +1,125 @@
-/**
- * select.js
- * Вибір і перетягування геометрії — розділ 8 ТЗ, переміщення прогонів — розділ 12.
- *
- * SEL-001: клік по лінії вибирає прогін і найближчий сегмент.
- * SEL-002: перетягування лінії рухає весь прогін (MOV-001).
- * SEL-003: клік по вільному кінцю вибирає саме кінець, його можна тягнути вільно.
- * SEL-005: не підсвічувати всі вузли одночасно — лише вибраний елемент.
- * PTR-001: клік перетворюється на drag лише після невеликого руху вказівника.
- * PTR-003: коли не тягнемо елемент редактора — панорамування карти працює штатно.
- * HIS-001: один drag від pointerdown до pointerup — один крок історії.
- * 8.1: Delete видаляє вибраний вузол/прогін.
- */
+import { state } from './state.js';
+import { renderOverlay } from './overlay.js';
 
-window.FP = window.FP || {};
+export function hideAllPopovers() {
+  const popovers = document.querySelectorAll('.popover');
+  popovers.forEach(p => {
+    p.hidden = true;
+  });
+}
 
-window.FP.SelectionController = class SelectionController {
-  /**
-   * @param {InstanceType<typeof window.FP.model.DataStore>} store
-   * @param {InstanceType<typeof window.FP.StateMachine>} sm
-   * @param {InstanceType<typeof window.FP.History>} history
-   * @param {L.Map} map
-   * @param {() => void} rerender
-   * @param {InstanceType<typeof window.FP.SnapController>} [snap]
-   * @param {InstanceType<typeof window.FP.ShapesController>} [shapesCtrl] - розділ 17
-   */
-  constructor(store, sm, history, map, rerender, snap = null, onSegmentClick = null, onGapClick = null, onGateLineClick = null, onPostLineClick = null, shapesCtrl = null) {
-    this.store = store;
-    this.sm = sm;
-    this.history = history;
-    this.map = map;
-    this.rerender = rerender;
-    this.snap = snap;
-    this.onSegmentClick = onSegmentClick;
-    this.onGapClick = onGapClick;
-    this.onGateLineClick = onGateLineClick;
-    this.onPostLineClick = onPostLineClick;
-    this.shapesCtrl = shapesCtrl;
+export function selectEntity(type, id, extra = null) {
+  hideAllPopovers();
 
-    this.DRAG_THRESHOLD_PX = 5; // PTR-001
+  state.selectedEntity = { type, id, extra };
+  renderOverlay();
 
-    /** активна drag-сесія: null | { type: 'point'|'run', id, startScreen, moved, lastGeo, snapCandidate } */
-    this.session = null;
+  if (!type || !id) return;
 
-    /** поточна ціль прилипання під час drag — читає overlay.js для рендеру ореолу (SNP-001) */
-    this.activeSnapCandidate = null;
+  const screenPos = getEntityScreenPos(type, id, extra);
+  if (!screenPos) return;
 
-    this._onWindowPointerMove = this._onWindowPointerMove.bind(this);
-    this._onWindowPointerUp = this._onWindowPointerUp.bind(this);
+  switch (type) {
+    case 'segment':
+      showLengthPopover(id, screenPos);
+      break;
+    case 'joint':
+      showJointPopover(id, screenPos);
+      break;
+    case 'gate':
+      showGatePopover(id, screenPos);
+      break;
+    case 'slidingGate':
+      showSlidingGatePopover(id, screenPos);
+      break;
+    case 'shape':
+      showShapeResizePopover(id, screenPos);
+      break;
   }
+}
 
-  isActive() {
-    return this.sm.state.activeTool === 'select';
-  }
+export function clearSelection() {
+  state.selectedEntity = null;
+  hideAllPopovers();
+  renderOverlay();
+}
 
-  isLineInteractive() {
-    const tool = this.sm.state.activeTool;
-    return tool === 'select' || tool === 'gap' || tool === 'gate' || tool === 'posts';
-  }
+function getEntityScreenPos(type, id, extra) {
+  if (!window.FP || !window.FP.geo) return null;
 
-  /** Клік по об'єкту (ворота) — вибирає його (SEL, 13). Викликається з overlay.js. */
-  attachObjectHandlers(el, objectId) {
-    if (!this.isActive()) return;
-    el.style.pointerEvents = 'all';
-    el.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      this.sm.select({ objectId });
-      this.rerender();
-    });
-  }
+  let geoPoint = null;
 
-  /** Викликається з overlay.js при рендері кожної лінії прогону */
-  attachLineHandlers(lineEl, runId, pointAId, pointBId) {
-    if (!this.isLineInteractive()) return;
-    lineEl.style.pointerEvents = 'stroke';
-    lineEl.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      const latLng = this.map.mouseEventToLatLng(e);
-      const clickGeo = { lat: latLng.lat, lng: latLng.lng };
-      this._startSession('run', runId, e, null, { pointAId, pointBId, clickGeo });
-    });
-  }
-
-  /**
-   * Викликається з overlay.js при рендері кожного об'єкта ділянки (розділ 17).
-   * На відміну від attachObjectHandlers (ворота/пости) — тут дозволене
-   * перетягування (OBJ-003), тому старт drag-сесії, а не миттєвий select.
-   */
-  attachShapeHandlers(el, shapeId) {
-    if (!this.isActive()) return;
-    el.style.pointerEvents = 'all';
-    el.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      this._startSession('shape', shapeId, e);
-    });
-  }
-
-  /** Викликається з overlay.js при рендері кожного вузла */
-  attachNodeHandlers(nodeEl, pointId, runId) {
-    if (!this.isActive()) return;
-    nodeEl.style.pointerEvents = 'all';
-    nodeEl.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      this._startSession('point', pointId, e, runId);
-    });
-  }
-
-  /** Клік по порожній карті знімає вибір (UI-005) */
-  handleEmptyMapClick() {
-    if (!this.isActive()) return;
-    this.sm.clearSelection();
-    this.rerender();
-  }
-
-  _startSession(type, id, pointerEvent, extraRunId = null, segmentInfo = null) {
-    this.map.dragging.disable(); // PTR-003: під час взаємодії з елементом карта не панорамується
-    this.session = {
-      type,
-      id,
-      runId: extraRunId,
-      segmentInfo,
-      startScreen: { x: pointerEvent.clientX, y: pointerEvent.clientY },
-      moved: false,
-    };
-    window.addEventListener('pointermove', this._onWindowPointerMove);
-    window.addEventListener('pointerup', this._onWindowPointerUp);
-  }
-
-  _onWindowPointerMove(e) {
-    if (!this.session) return;
-    const dx = e.clientX - this.session.startScreen.x;
-    const dy = e.clientY - this.session.startScreen.y;
-    const dist = Math.hypot(dx, dy);
-
-    if (!this.session.moved && dist < this.DRAG_THRESHOLD_PX) {
-      return; // PTR-001: ще звичайний клік, не drag
-    }
-
-    const isClickOnlyTool =
-      this.sm.state.activeTool === 'gap' || this.sm.state.activeTool === 'gate' || this.sm.state.activeTool === 'posts';
-
-    if (!this.session.moved) {
-      // Перший кадр справжнього drag — почати транзакцію історії (HIS-001/HIS-002)
-      // У режимах gap/gate/posts ми не рухаємо геометрію взагалі — лише клік має значення.
-      if (!isClickOnlyTool) {
-        this.history.beginAction();
-        this.sm.startDrag({ targetType: this.session.type, targetId: this.session.id });
-      }
-    }
-    this.session.moved = true;
-
-    if (isClickOnlyTool) {
-      return; // ігноруємо рух геометрії в режимі Fence gap / Swing gates
-    }
-
-    const mapContainerPoint = this.map.mouseEventToContainerPoint(e);
-    const newGeo = window.FP.geo.toGeo({ x: mapContainerPoint.x, y: mapContainerPoint.y });
-
-    if (this.session.type === 'point') {
-      this._dragPoint(this.session.id, newGeo);
-    } else if (this.session.type === 'shape') {
-      this._dragShape(this.session.id, newGeo);
-    } else {
-      this._dragRun(this.session.id, newGeo);
-    }
-
-    this.rerender();
-  }
-
-  /** Перетягування об'єкта ділянки (OBJ-003, розділ 17) — вільне переміщення, знімає анкер лінії */
-  _dragShape(shapeId, newGeo) {
-    if (this.shapesCtrl) this.shapesCtrl.moveTo(shapeId, newGeo);
-  }
-
-  _dragPoint(pointId, newGeo) {
-    if (!this.session.lastGeo) {
-      const point = this.store.points.get(pointId);
-      this.session.lastGeo = point.geographicPosition;
-    }
-    this.store.movePoint(pointId, newGeo);
-
-    // SNP-001/9.4: під час перетягування вільного кінця шукаємо найближчу ціль
-    // прилипання (endpoint/node/segment/loop — лише preview, реальний зв'язок
-    // створюється на pointerup, SNP-003).
-    if (this.snap) {
-      const point = this.store.points.get(pointId);
-      if (!point.jointId) {
-        this.activeSnapCandidate = this.snap.findSnapTarget(pointId, newGeo);
+  if (type === 'shape') {
+    const shape = state.shapes.find(s => s.id === id);
+    if (shape) geoPoint = { lat: shape.lat, lng: shape.lng };
+  } else if (type === 'joint') {
+    const joint = state.joints.find(j => j.id === id);
+    if (joint) geoPoint = { lat: joint.lat, lng: joint.lng };
+  } else if (type === 'segment') {
+    const seg = state.segments.find(s => s.id === id);
+    if (seg) {
+      const j1 = state.joints.find(j => j.id === seg.jointA);
+      const j2 = state.joints.find(j => j.id === seg.jointB);
+      if (j1 && j2) {
+        geoPoint = {
+          lat: (j1.lat + j2.lat) / 2,
+          lng: (j1.lng + j2.lng) / 2
+        };
       }
     }
   }
 
-  _dragRun(runId, newGeo) {
-    if (!this.session.lastGeo) this.session.lastGeo = newGeo;
-    const deltaLat = newGeo.lat - this.session.lastGeo.lat;
-    const deltaLng = newGeo.lng - this.session.lastGeo.lng;
-    this.store.moveRun(runId, deltaLat, deltaLng);
-    this.session.lastGeo = newGeo;
+  if (!geoPoint) return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  return window.FP.geo.toScreen(geoPoint);
+}
+
+function positionPopover(popover, pos) {
+  popover.style.left = `${pos.x}px`;
+  popover.style.top = `${pos.y - 45}px`;
+  popover.hidden = false;
+}
+
+function showLengthPopover(segmentId, pos) {
+  const popover = document.getElementById('length-popover');
+  const input = document.getElementById('length-input');
+  const seg = state.segments.find(s => s.id === segmentId);
+
+  if (popover && input && seg) {
+    input.value = seg.length ? seg.length.toFixed(1) : '';
+    positionPopover(popover, pos);
   }
+}
 
-  _onWindowPointerUp() {
-    window.removeEventListener('pointermove', this._onWindowPointerMove);
-    window.removeEventListener('pointerup', this._onWindowPointerUp);
-    this.map.dragging.enable();
-
-    if (!this.session) return;
-
-    const isClickOnlyTool =
-      this.sm.state.activeTool === 'gap' || this.sm.state.activeTool === 'gate' || this.sm.state.activeTool === 'posts';
-
-    if (this.session.moved) {
-      // Реальний drag завершено (лише коли рух геометрії взагалі дозволений)
-      if (!isClickOnlyTool) {
-        // SNP-003: якщо під час перетягування вільного кінця ціль ще в радіусі —
-        // створюємо реальний зв'язок саме тут, на відпусканні. Тип дії залежить
-        // від виду кандидата, знайденого snap.findSnapTarget (розділ 9, 11).
-        if (this.session.type === 'point' && this.activeSnapCandidate && this.snap) {
-          const candidate = this.activeSnapCandidate;
-          if (candidate.kind === 'loop') {
-            this.snap.closeLoop(this.session.id, candidate.runId); // LOOP-001/002
-          } else if (candidate.kind === 'segment') {
-            this.snap.createTJoint(this.session.id, candidate); // SNP-004: T-стик
-          } else if (candidate.kind === 'object') {
-            // 17.4: лише вирівняти координати з об'єктом ділянки, без Joint-а
-            this.store.movePoint(this.session.id, candidate.geo);
-          } else {
-            this.snap.createJoint(this.session.id, candidate.pointId); // endpoint | node
-          }
-        }
-        this.activeSnapCandidate = null;
-        if (this.snap) this.snap.clearBlock(); // 9.3/LOOP-004: блок діє лише в межах цієї drag-сесії
-        this.history.commitAction();
-        this.sm.endDrag();
-        // GEN-003/UI-005: перетягнутий елемент стає вибраним — без цього
-        // selectedObjectId/selectedPointId лишався б від попереднього вибору,
-        // і його стара контекстна панель (напр. ворота) могла б лишитись
-        // відкритою одночасно з новою (напр. resize-попап щойно пересунутого
-        // об'єкта ділянки) — саме накладання панелей одна на одну.
-        if (this.session.type === 'point') {
-          this.sm.select({ pointId: this.session.id, runId: this.session.runId });
-        } else if (this.session.type === 'shape') {
-          this.sm.select({ objectId: this.session.id });
-        } else {
-          this.sm.select({ runId: this.session.id });
-        }
-      }
-    } else if (this.sm.state.activeTool === 'gap') {
-      // Клік по сегменту в режимі Fence gap — саме те, що нам треба
-      if (this.session.segmentInfo && this.onGapClick) {
-        this.onGapClick(
-          this.session.runId,
-          this.session.segmentInfo.pointAId,
-          this.session.segmentInfo.pointBId,
-          this.session.segmentInfo.clickGeo
-        );
-      }
-    } else if (this.sm.state.activeTool === 'gate') {
-      // Клік по сегменту в режимі Swing gates — ставимо ворота в проєм (13.1)
-      if (this.session.segmentInfo && this.onGateLineClick) {
-        this.onGateLineClick(
-          this.session.runId,
-          this.session.segmentInfo.pointAId,
-          this.session.segmentInfo.pointBId,
-          this.session.segmentInfo.clickGeo
-        );
-      }
-    } else if (this.sm.state.activeTool === 'posts') {
-      // Клік по сегменту в режимі Additional posts — ставимо додатковий стовп (16.1)
-      if (this.session.segmentInfo && this.onPostLineClick) {
-        this.onPostLineClick(
-          this.session.runId,
-          this.session.segmentInfo.pointAId,
-          this.session.segmentInfo.pointBId,
-          this.session.segmentInfo.clickGeo
-        );
-      }
-    } else {
-      // Це був звичайний клік без руху — обробити як вибір (SEL-001/SEL-003/SEL-004)
-      if (this.session.type === 'point') {
-        this.sm.select({ pointId: this.session.id, runId: this.session.runId });
-      } else if (this.session.type === 'shape') {
-        this.sm.select({ objectId: this.session.id }); // розділ 17
-      } else {
-        this.sm.select({ runId: this.session.id });
-        if (this.session.segmentInfo && this.onSegmentClick) {
-          this.onSegmentClick(this.session.segmentInfo.pointAId, this.session.segmentInfo.pointBId);
-        }
-      }
-    }
-
-    this.session = null;
-    this.rerender();
+function showJointPopover(jointId, pos) {
+  const popover = document.getElementById('joint-popover');
+  if (popover) {
+    positionPopover(popover, pos);
   }
+}
 
-  /**
-   * Delete/Backspace — розділ 8.1.
-   * Вибрано прогін -> видалити весь прогін.
-   * Вибрано вільний вузол -> видалити точку, сусідні сегменти з'єднуються.
-   */
-  deleteSelected() {
-    const s = this.sm.state;
-    if (!s.selectedPointId && !s.selectedRunId && !s.selectedObjectId) return;
-
-    this.history.beginAction();
-    if (s.selectedPointId) {
-      this.store.removePoint(s.selectedPointId);
-    } else if (s.selectedObjectId) {
-      // Вибрано об'єкт (ворота або Additional post): 8.1 — видалити об'єкт,
-      // магнітна прив'язка знімається без помилки.
-      if (this.store.gates.has(s.selectedObjectId)) {
-        this.store.removeGate(s.selectedObjectId);
-      } else if (this.store.posts.has(s.selectedObjectId)) {
-        this.store.removePost(s.selectedObjectId);
-      } else if (this.store.shapes.has(s.selectedObjectId)) {
-        this.store.removeShape(s.selectedObjectId); // 8.1, розділ 17
-      }
-    } else if (s.selectedRunId) {
-      this.store.removeRun(s.selectedRunId);
-    }
-    this.history.commitAction();
-
-    this.sm.clearSelection();
-    this.rerender();
+function showGatePopover(gateId, pos) {
+  const popover = document.getElementById('gate-popover');
+  if (popover) {
+    positionPopover(popover, pos);
   }
-};
+}
+
+function showSlidingGatePopover(gateId, pos) {
+  const popover = document.getElementById('sliding-gate-popover');
+  if (popover) {
+    positionPopover(popover, pos);
+  }
+}
+
+function showShapeResizePopover(shapeId, pos) {
+  const popover = document.getElementById('shape-resize-popover');
+  const widthInput = document.getElementById('shape-width-input');
+  const heightInput = document.getElementById('shape-height-input');
+  const shape = state.shapes.find(s => s.id === shapeId);
+
+  if (popover && shape) {
+    if (widthInput) widthInput.value = shape.width || '';
+    if (heightInput) heightInput.value = shape.height || '';
+    positionPopover(popover, pos);
+  }
+}

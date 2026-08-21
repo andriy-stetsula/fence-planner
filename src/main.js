@@ -9,7 +9,17 @@ function initMap() {
     center: [49.593, 23.482], // Дрогобич, як приклад стартової точки
     zoom: 19,
     maxZoom: 22,
+    zoomControl: false, // власний контрол додаємо нижче в іншому куті — див. коментар
   });
+
+  // Контекстні попапи (joint/gate/shape-resize) при близькості вибраного елемента
+  // до краю карти притискаються саме до лівого верхнього кута (Math.max(8, ...)
+  // у відповідних update*Popover функціях нижче) — це той самий кут, де Leaflet
+  // за замовчуванням малює свій zoom control (+/-). "Finish run" займає правий
+  // нижній (style.css .floating-corner-btn), тому для zoom control лишається
+  // вільний лівий нижній кут — переносимо його туди, щоб кути фізично
+  // ніколи не могли накластись одне на одне.
+  L.control.zoom({ position: 'bottomleft' }).addTo(map);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,

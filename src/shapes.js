@@ -1,25 +1,8 @@
-/**
- * shapes.js
- * Об'єкти ділянки — розділ 17 ТЗ: house, tree, pool, arbor, mailbox
- * (конверт), parcel pillar.
- *
- * OBJ-002: спокійніший, окремий колірний шар — рендер у overlay.js нижче
- * лінії паркану (розділ 19.1, шар 2 "site objects").
- * OBJ-003: house/pool — ресайз через попап ширини/довжини; інші типи —
- * фіксований дефолтний розмір типу, лише переміщення.
- * 17.4: mailbox, поставлений близько до лінії паркану, "живо" прив'язується
- * до сегмента (як Additional post, розділ 16 MOV-003) і слідує за прогоном
- * при його переміщенні; ручне перетягування знімає прив'язку
- * (DataStore.detachShape/moveShape).
- */
-
 window.FP = window.FP || {};
 
 window.FP.ShapesController = class ShapesController {
-  /** @param {InstanceType<typeof window.FP.model.DataStore>} store */
   constructor(store) {
     this.store = store;
-    // DRW-003 дух правила: дефолтні розміри типів — конфігурація, не хардкод.
     this.types = {
       house: { label: 'Будинок', widthM: 8, heightM: 6, resizable: true, anchorable: false },
       pool: { label: 'Басейн', widthM: 6, heightM: 3, resizable: true, anchorable: false },
@@ -28,8 +11,6 @@ window.FP.ShapesController = class ShapesController {
       mailbox: { label: 'Поштова скринька', widthM: 0.4, heightM: 0.4, resizable: false, anchorable: true },
       parcelPillar: { label: 'Стовп ділянки', widthM: 0.3, heightM: 0.3, resizable: false, anchorable: false },
     };
-    // 17.4: трохи ширше за ATTACH_RADIUS_PX ліній (SnapController) — mailbox
-    // легше зловити лінію паркану, ніж точний T-стик.
     this.ANCHOR_ATTACH_RADIUS_PX = 20;
   }
 
@@ -41,12 +22,6 @@ window.FP.ShapesController = class ShapesController {
     return this.types[type] || null;
   }
 
-  /**
-   * Розмістити новий об'єкт (розділ 4 "Розміщення об'єкта" + розділ 17).
-   * 17.4: для anchorable типів (mailbox) — якщо клік достатньо близько до
-   * сегмента лінії паркану, об'єкт одразу ставиться "живо" прив'язаним.
-   * @returns {{success:boolean, message?:string, shapeId?:string}}
-   */
   placeAt(type, clickGeo) {
     const cfg = this.types[type];
     if (!cfg) return { success: false, message: "Невідомий тип об'єкта" };
@@ -66,7 +41,6 @@ window.FP.ShapesController = class ShapesController {
     return { success: true, shapeId: shape.id };
   }
 
-  /** 17.4: найближчий сегмент лінії паркану в межах ANCHOR_ATTACH_RADIUS_PX */
   _findNearestSegment(clickGeo) {
     let best = null;
     for (const run of this.store.runs.values()) {
@@ -86,7 +60,6 @@ window.FP.ShapesController = class ShapesController {
     return best;
   }
 
-  /** Проекція на відрізок в екранних пікселях, затиснута в межах [0,1] (на відміну від snap.js: тут завжди є найближча точка сегмента) */
   _projectOntoSegmentPx(clickGeo, aGeo, bGeo) {
     const aScreen = window.FP.geo.toScreen(aGeo);
     const bScreen = window.FP.geo.toScreen(bGeo);
@@ -102,7 +75,6 @@ window.FP.ShapesController = class ShapesController {
     return { t, distPx };
   }
 
-  /** Поточна екранно-незалежна geo-позиція об'єкта (делегує в model.js) */
   getGeo(shape) {
     return this.store.getShapeGeo(shape);
   }

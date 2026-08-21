@@ -54,7 +54,10 @@ html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
 
 .popover {
   position: absolute;
-  z-index: 6;
+  /* Leaflet-контроли (zoom тощо) мають z-index ~1000 за замовчуванням, тому
+     попап навмисне ставимо вище — навіть якщо колись перетнуться, активна
+     панель, з якою користувач саме взаємодіє, лишиться зверху й читабельною. */
+  z-index: 1200;
   background: #fff;
   border: 1px solid #ccc;
   border-radius: 8px;

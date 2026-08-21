@@ -104,3 +104,6 @@ npx serve .
 з'єднаний closed-стиками з іншими прогонами, вся зв'язана група і прикріплені
 об'єкти (ворота, пошта, additional posts) повинні переміщуватись разом.
 
+## Demo
+
+🔗 **Live demo:** https://username.github.io/fence-planner/

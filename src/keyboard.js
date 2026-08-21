@@ -1,13 +1,3 @@
-/**
- * keyboard.js
- * Гарячі клавіші — розділ 20 ТЗ.
- *
- * KEY-001: використовуємо KeyboardEvent.code (фізичний код клавіші),
- * а не .key, щоб D/V/N/P/L працювали і в кириличній розкладці.
- * KEY-002: якщо фокус в input/textarea/select/contenteditable — буквені
- * shortcuts не спрацьовують; Enter/Esc обробляються самим полем.
- */
-
 window.FP = window.FP || {};
 
 window.FP.bindKeyboard = function bindKeyboard({ sm, draw, history, slidingGate = null, callbacks }) {
@@ -24,10 +14,6 @@ window.FP.bindKeyboard = function bindKeyboard({ sm, draw, history, slidingGate 
 
   window.addEventListener('keydown', (e) => {
     const typing = isTypingTarget(document.activeElement);
-
-    // Enter / Esc можуть знадобитись і під час введення числа (сама модалка
-    // це обробляє окремо через свій slot listener) — тут лише глобальна логіка,
-    // коли фокус НЕ в полі.
     if (e.code === 'Escape') {
       const isDrafting =
         (sm.state.activeTool === 'draw' && draw.isDrafting()) ||
@@ -47,7 +33,7 @@ window.FP.bindKeyboard = function bindKeyboard({ sm, draw, history, slidingGate 
       return;
     }
 
-    if (typing) return; // KEY-002
+    if (typing) return; 
 
     switch (e.code) {
       case 'KeyV':
@@ -56,7 +42,6 @@ window.FP.bindKeyboard = function bindKeyboard({ sm, draw, history, slidingGate 
         break;
       case 'KeyD':
         if (e.metaKey || e.ctrlKey) {
-          // Ctrl/Cmd+D — Duplicate selected object, а не перемикання інструмента
           e.preventDefault();
           callbacks.onDuplicate?.();
         } else {
